@@ -1,4 +1,5 @@
 // based on Example17_NTRIPClient_With_GGA_Callback by sparkfun
+// last updated 2022-05-08 by mza
 
 /*
 	Use ESP32 WiFi to get RTCM data from Swift Navigation's Skylark caster as a Client, and transmit GGA using a callback
@@ -32,6 +33,30 @@
 #include <WiFi.h>
 #include "secrets.h"
 
+#include <Adafruit_SPITFT_Macros.h>
+#include <Adafruit_SPITFT.h>
+#include <Adafruit_GFX.h>
+#include <gfxfont.h>
+#include <Adafruit_GrayOLED.h>
+#include <Adafruit_ILI9341.h>
+
+//#define STMPE_CS 6
+#define TFT_CS	 9
+#define TFT_DC	 10
+#define TFT_RESET 6
+//#define SD_CS		5
+Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MISO);
+//Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+
+//#include "AdafruitIO_WiFi.h"
+//AdafruitIO_WiFi io(user, key, ssid, password);
+//AdafruitIO_Feed *myfeed = io.feed(feed);
+
+double lat = 44.444444;
+double lon = -77.777777;
+double ele = 1.111111;
+uint32_t horizontal_accuracy_mm = 10000;
+
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> //http://librarymanager/All#SparkFun_u-blox_GNSS
 SFE_UBLOX_GNSS myGNSS;
 
@@ -48,7 +73,7 @@ SFE_UBLOX_GNSS myGNSS;
 //Global variables
 
 unsigned long lastReceivedRTCM_ms = 0; //5 RTCM messages take approximately ~300ms to arrive at 115200bps
-const unsigned long maxTimeBeforeHangup_ms = 10000UL; //If we fail to get a complete RTCM frame after 10s, then disconnect from caster
+const unsigned long maxTimeBeforeHangup_ms = 60000UL; //If we fail to get a complete RTCM frame after 60s, then disconnect from caster
 
 bool transmitLocation = true; //By default we will transmit the unit's location via GGA sentence.
 
@@ -115,6 +140,10 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	Serial.print(hAcc);
 	Serial.print(F(" (mm)"));
 	Serial.println();
+	lat = latitude / 10000000.0;
+	lon = longitude / 10000000.0;
+	ele = altitude / 1000.0;
+	horizontal_accuracy_mm = hAcc;
 }
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -122,6 +151,20 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 void setup() {
 	Serial.begin(115200);
 	Serial.println(F("NTRIP testing"));
+	#if defined(ARDUINO_ADAFRUIT_FEATHER_ESP32S2)
+		#define PIN_I2C_POWER (7)
+		pinMode(PIN_I2C_POWER, INPUT);
+		delay(1);
+		bool polarity = digitalRead(PIN_I2C_POWER);
+		pinMode(PIN_I2C_POWER, OUTPUT);
+		digitalWrite(PIN_I2C_POWER, !polarity);
+	#endif
+	tft.begin();
+	tft.fillScreen(ILI9341_BLACK);
+	tft.setCursor(0, 0);
+	tft.setTextColor(ILI9341_WHITE); 
+	tft.setTextSize(2);
+	tft.setRotation(2);
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		Serial.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
@@ -142,6 +185,7 @@ void setup() {
 	bool keepTrying = true;
 	while (keepTrying) {
 		Serial.print(F("Connecting to local WiFi"));
+		tft.print(F("Connecting to local WiFi"));
 		unsigned long startTime = millis();
 		WiFi.begin(ssid, password);
 		while ((WiFi.status() != WL_CONNECTED) && (millis() < (startTime + 10000))) { // Timeout after 10 seconds
@@ -214,6 +258,36 @@ void loop() {
 			}
 			break; 
 	}
+	static short int count = 0;
+	short int length = strlen(ssid);
+#define MAXCOUNT (256)
+	if (0==count%MAXCOUNT) {
+		int n = WiFi.scanNetworks();
+		tft.fillScreen(ILI9341_BLACK);
+		tft.setCursor(0, 0);
+		tft.println(horizontal_accuracy_mm);
+		//tft.setCursor(0, 20);
+		if (n == 0) {
+					Serial.println("no networks found");
+					tft.println("no networks found");
+		} else {
+			Serial.print(n);
+			Serial.println(" networks found");
+			tft.print(n);
+			tft.println(" networks found");
+			for (int i = 0; i < n; ++i) {
+				Serial.print(WiFi.RSSI(i));
+				Serial.print(" ");
+				Serial.println(WiFi.SSID(i));
+				tft.print(WiFi.RSSI(i));
+				tft.print(" ");
+				tft.println(WiFi.SSID(i));
+				delay(10);
+			}
+		}
+	}
+	delay(1);
+	count++;
 }
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
