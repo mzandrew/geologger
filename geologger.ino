@@ -1,5 +1,14 @@
 // based on Example17_NTRIPClient_With_GGA_Callback by sparkfun
+// still more from adafruit_00_publish
+// bits taken from adafruit_ILI9341 / graphicstest_featherwing
+// yet more from adafruit_04_location
+// more from adafruitio_secure_esp32
+// https://learn.adafruit.com/adafruit-io/mqtt-api
 // last updated 2022-05-08 by mza
+
+#define DIVISOR (256)
+#define MAX_UPLOADS (100)
+#define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
 
 /*
 	Use ESP32 WiFi to get RTCM data from Swift Navigation's Skylark caster as a Client, and transmit GGA using a callback
@@ -148,9 +157,123 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 
 //=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
+#include <stdint.h>
+#include "WiFiClientSecure.h"
+#include "Adafruit_MQTT_Client.h"
+
+#define AIO_SERVER     "io.adafruit.com"
+#define AIO_SERVERPORT 8883
+
+int number_of_uploads = 0;
+
+// WiFiFlientSecure for SSL/TLS support
+WiFiClientSecure client;
+
+// Setup the MQTT client class by passing in the WiFi client and MQTT server and login details.
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USER, AIO_KEY);
+
+// Notice MQTT paths for AIO follow the form: <username>/feeds/<feedname>
+//Adafruit_MQTT_Publish feed = Adafruit_MQTT_Publish(&mqtt, AIO_USER "/feeds/" AIO_FEED);
+//Adafruit_MQTT_Publish feed = Adafruit_MQTT_Publish(&mqtt, AIO_USER "/feeds/" AIO_FEED "/json");
+Adafruit_MQTT_Publish feed = Adafruit_MQTT_Publish(&mqtt, AIO_USER "/feeds/" AIO_FEED "/csv");
+
+// io.adafruit.com root CA
+const char* adafruitio_root_ca = \
+	"-----BEGIN CERTIFICATE-----\n" \
+	"MIIDrzCCApegAwIBAgIQCDvgVpBCRrGhdWrJWZHHSjANBgkqhkiG9w0BAQUFADBh\n" \
+	"MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3\n" \
+	"d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBD\n" \
+	"QTAeFw0wNjExMTAwMDAwMDBaFw0zMTExMTAwMDAwMDBaMGExCzAJBgNVBAYTAlVT\n" \
+	"MRUwEwYDVQQKEwxEaWdpQ2VydCBJbmMxGTAXBgNVBAsTEHd3dy5kaWdpY2VydC5j\n" \
+	"b20xIDAeBgNVBAMTF0RpZ2lDZXJ0IEdsb2JhbCBSb290IENBMIIBIjANBgkqhkiG\n" \
+	"9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4jvhEXLeqKTTo1eqUKKPC3eQyaKl7hLOllsB\n" \
+	"CSDMAZOnTjC3U/dDxGkAV53ijSLdhwZAAIEJzs4bg7/fzTtxRuLWZscFs3YnFo97\n" \
+	"nh6Vfe63SKMI2tavegw5BmV/Sl0fvBf4q77uKNd0f3p4mVmFaG5cIzJLv07A6Fpt\n" \
+	"43C/dxC//AH2hdmoRBBYMql1GNXRor5H4idq9Joz+EkIYIvUX7Q6hL+hqkpMfT7P\n" \
+	"T19sdl6gSzeRntwi5m3OFBqOasv+zbMUZBfHWymeMr/y7vrTC0LUq7dBMtoM1O/4\n" \
+	"gdW7jVg/tRvoSSiicNoxBN33shbyTApOB6jtSj1etX+jkMOvJwIDAQABo2MwYTAO\n" \
+	"BgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUA95QNVbR\n" \
+	"TLtm8KPiGxvDl7I90VUwHwYDVR0jBBgwFoAUA95QNVbRTLtm8KPiGxvDl7I90VUw\n" \
+	"DQYJKoZIhvcNAQEFBQADggEBAMucN6pIExIK+t1EnE9SsPTfrgT1eXkIoyQY/Esr\n" \
+	"hMAtudXH/vTBH1jLuG2cenTnmCmrEbXjcKChzUyImZOMkXDiqw8cvpOp/2PV5Adg\n" \
+	"06O/nVsJ8dWO41P0jmP6P6fbtGbfYmbW0W5BjfIttep3Sp+dWOIrWcBAI+0tKIJF\n" \
+	"PnlUkiaY4IBIqDfv8NZ5YBberOgOzW6sRBc4L0na4UU+Krk2U886UAb3LujEV0ls\n" \
+	"YSEY1QSteDwsOoBrp+uvFRTp2InBuThs4pFsiv9kuXclVzDAGySj4dzp30d8tbQk\n" \
+	"CAUw7C29C79Fv1C5qfPrmAESrciIxpg0X40KPMbp1ZWVbd4=\n" \
+	"-----END CERTIFICATE-----\n";
+
+int MQTT_connect() {
+	int8_t ret;
+	if (mqtt.connected()) { return 1; } // Stop if already connected.
+	Serial.print("Connecting to MQTT... ");
+	uint8_t retries = 3;
+	while ((ret = mqtt.connect()) != 0) { // connect will return 0 for connected
+		Serial.println(mqtt.connectErrorString(ret));
+		mqtt.disconnect();
+		delay(5000);	// wait 5 seconds
+		Serial.println("Retrying MQTT connection... ");
+		retries--;
+		if (retries == 0) { return 0; }
+	}
+	Serial.println("Connected!");
+	return 1;
+}
+
+// from https://github.com/mzandrew/Watchy/blob/master/examples/WatchFaces/mza/src/Watchy_mza.cpp
+uint32_t upload_to_feed(uint32_t value) {
+	if (value) {
+		Serial.print("value: "); Serial.println(value);
+		if (MQTT_connect()) {
+			feed.publish(value); // upload this somewhere
+			//feed.publish('{"value":value}'); // upload this somewhere
+			Serial.print("published value: "); Serial.println(value);
+			value = 0;
+			number_of_uploads++;
+		} else {
+			Serial.println("couldn't publish value! "); Serial.println(value);
+		}
+	}
+	return value;
+}
+
+// from https://github.com/mzandrew/Watchy/blob/master/examples/WatchFaces/mza/src/Watchy_mza.cpp
+uint32_t upload_to_feed_with_location(uint32_t value, float latitude, float longitude, float elevation) {
+#define STRING_SIZE (32)
+	char temp[STRING_SIZE];
+	char csv_string[4*STRING_SIZE];
+	if (value) {
+		Serial.print("value: "); Serial.println(value);
+		if (MQTT_connect()) {
+			//feed.publish(AIO_USER '/feeds/' AIO_FEED / "", '{"value":value,"lat":latitude,"lon":longitude,"ele":elevation'); // upload this somewhere
+			//feed.publish('{"value":value,"lat":latitude,"lon":longitude,"ele":elevation}'); // upload this somewhere
+			//String csv_string = "";
+			snprintf(temp, STRING_SIZE, "%d", value);
+			strncpy(csv_string, temp, STRING_SIZE);
+			snprintf(temp, STRING_SIZE, ",%.8f", latitude);
+			strncat(csv_string, temp, STRING_SIZE);
+			snprintf(temp, STRING_SIZE, ",%.8f", longitude);
+			strncat(csv_string, temp, STRING_SIZE);
+			snprintf(temp, STRING_SIZE, ",%.3f", elevation);
+			strncat(csv_string, temp, STRING_SIZE);
+			Serial.println(csv_string);
+			//csv_string += std::format("{}", latitude);
+			feed.publish(csv_string);
+			Serial.print("published value: "); Serial.println(value);
+			value = 0;
+			number_of_uploads++;
+		} else {
+			Serial.println("couldn't publish value! "); Serial.println(value);
+		}
+	}
+	return value;
+}
+
 void setup() {
 	Serial.begin(115200);
 	Serial.println(F("NTRIP testing"));
+	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
+		Wire.setPins(SDA1, SCL1);
+	#endif
 	#if defined(ARDUINO_ADAFRUIT_FEATHER_ESP32S2)
 		#define PIN_I2C_POWER (7)
 		pinMode(PIN_I2C_POWER, INPUT);
@@ -165,6 +288,7 @@ void setup() {
 	tft.setTextColor(ILI9341_WHITE); 
 	tft.setTextSize(2);
 	tft.setRotation(2);
+	client.setCACert(adafruitio_root_ca); // Set Adafruit IO's root CA
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		Serial.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
@@ -184,8 +308,8 @@ void setup() {
 	//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 	bool keepTrying = true;
 	while (keepTrying) {
-		Serial.print(F("Connecting to local WiFi"));
-		tft.print(F("Connecting to local WiFi"));
+		Serial.println(F("Connecting to local WiFi..."));
+		tft.println(F("Connecting to local WiFi..."));
 		unsigned long startTime = millis();
 		WiFi.begin(ssid, password);
 		while ((WiFi.status() != WL_CONNECTED) && (millis() < (startTime + 10000))) { // Timeout after 10 seconds
@@ -224,6 +348,7 @@ void loop() {
 	switch (state) {
 		case open_connection:
 			Serial.println(F("Connecting to the NTRIP caster..."));
+			tft.println(F("Connecting to the NTRIP caster..."));
 			if (beginClient()) { // Try to open the connection to the caster
 				Serial.println(F("Connected to the NTRIP caster! Press any key to disconnect..."));
 				state = push_data_and_wait_for_keypress; // Move on
@@ -260,8 +385,8 @@ void loop() {
 	}
 	static short int count = 0;
 	short int length = strlen(ssid);
-#define MAXCOUNT (256)
-	if (0==count%MAXCOUNT) {
+	short int RSSI = -120;
+	if (0==count%DIVISOR) {
 		int n = WiFi.scanNetworks();
 		tft.fillScreen(ILI9341_BLACK);
 		tft.setCursor(0, 0);
@@ -282,9 +407,22 @@ void loop() {
 				tft.print(WiFi.RSSI(i));
 				tft.print(" ");
 				tft.println(WiFi.SSID(i));
+				if (strncmp(WiFi.SSID(i).c_str(), ssid, length)) {
+					//Serial.println("match!");
+					if (RSSI<WiFi.RSSI(i)) {
+						RSSI = WiFi.RSSI(i);
+					}
+				}
 				delay(10);
 			}
 		}
+		if (number_of_uploads<MAX_UPLOADS) {
+			//upload_to_feed(RSSI);
+			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+				upload_to_feed_with_location(RSSI, lat, lon, ele);
+			}
+		}
+		tft.println(number_of_uploads);
 	}
 	delay(1);
 	count++;
