@@ -390,7 +390,10 @@ void loop() {
 		int n = WiFi.scanNetworks();
 		tft.fillScreen(ILI9341_BLACK);
 		tft.setCursor(0, 0);
+		tft.print("horizontal_accuracy_mm: ");
 		tft.println(horizontal_accuracy_mm);
+		tft.print("number_of_uploads: ");
+		tft.println(number_of_uploads);
 		//tft.setCursor(0, 20);
 		if (n == 0) {
 					Serial.println("no networks found");
@@ -422,7 +425,6 @@ void loop() {
 				upload_to_feed_with_location(RSSI, lat, lon, ele);
 			}
 		}
-		tft.println(number_of_uploads);
 	}
 	delay(1);
 	count++;
