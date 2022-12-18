@@ -11,6 +11,7 @@
 #define MAX_UPLOADS (100)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
 //#define GET_RTCM_FROM_WIFI
+#define POST_WIFI_RSSI_DATA_OVER_WIFI
 
 /*
 	Use ESP32 WiFi to get RTCM data from Swift Navigation's Skylark caster as a Client, and transmit GGA using a callback
@@ -453,7 +454,9 @@ void loop() {
 		if (number_of_uploads<MAX_UPLOADS) {
 			//upload_to_feed(RSSI);
 			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
-				upload_to_feed_with_location(RSSI, lat, lon, ele);
+				#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
+					upload_to_feed_with_location(RSSI, lat, lon, ele);
+				#endif
 			}
 		}
 	}
