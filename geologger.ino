@@ -1,14 +1,16 @@
+// written 2022-05-07 by mza
 // based on Example17_NTRIPClient_With_GGA_Callback by sparkfun
 // still more from adafruit_00_publish
 // bits taken from adafruit_ILI9341 / graphicstest_featherwing
 // yet more from adafruit_04_location
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
-// last updated 2022-05-08 by mza
+// last updated 2022-12-18 by mza
 
 #define DIVISOR (256)
 #define MAX_UPLOADS (100)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
+//#define GET_RTCM_FROM_WIFI
 
 /*
 	Use ESP32 WiFi to get RTCM data from Swift Navigation's Skylark caster as a Client, and transmit GGA using a callback
@@ -270,6 +272,7 @@ uint32_t upload_to_feed_with_location(uint32_t value, float latitude, float long
 
 void setup() {
 	Serial.begin(115200);
+	delay(1500);
 	Serial.println(F("NTRIP testing"));
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
@@ -283,6 +286,10 @@ void setup() {
 		digitalWrite(PIN_I2C_POWER, !polarity);
 	#endif
 	tft.begin();
+	uint8_t x = tft.readcommand8(ILI9341_RDMODE); // 0x94
+	Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
+	x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
+	Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
 	tft.fillScreen(ILI9341_BLACK);
 	tft.setCursor(0, 0);
 	tft.setTextColor(ILI9341_WHITE); 
@@ -304,6 +311,28 @@ void setup() {
 	myGNSS.setNMEAGPGGAcallbackPtr(&pushGPGGA); // Set up the callback for GPGGA
 	myGNSS.enableNMEAMessage(UBX_NMEA_GGA, COM_PORT_I2C, 10); // Tell the module to output GGA every 10 seconds
 	myGNSS.setAutoPVTcallbackPtr(&printPVTdata); // Enable automatic NAV PVT messages with callback to printPVTdata so we can watch the carrier solution go to fixed
+	// from Example8_GetSetPortSettings:
+	bool response;
+	uint32_t currentUART2Baud = myGNSS.getVal32(UBLOX_CFG_UART2_BAUDRATE);
+	Serial.print("currentUART2Baud: ");
+	Serial.println(currentUART2Baud);
+	if (currentUART2Baud != 57600) {
+		response = myGNSS.setVal32(UBLOX_CFG_UART2_BAUDRATE, 57600);
+		if (response == false) {
+			Serial.println("SetVal failed");
+		} else {
+			Serial.println("SetVal succeeded");
+		}
+//	} else {
+//		Serial.println("No baud change needed");
+	}
+	Serial.print("enabling uart2 RTCM3 input: ");
+	response = myGNSS.setVal8(UBLOX_CFG_UART2INPROT_RTCM3X, 1); // Enable RTCM on UART2 Input
+	if (response == false) {
+		Serial.println("SetVal failed");
+	} else {
+		Serial.println("SetVal succeeded");
+	}
 	//myGNSS.saveConfiguration(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_MSGCONF); //Optional: Save the ioPort and message settings to NVM
 	//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 	bool keepTrying = true;
@@ -337,6 +366,7 @@ void setup() {
 void loop() {
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
 	myGNSS.checkCallbacks(); // Check if any GNSS callbacks are waiting to be processed.
+	#ifdef GET_RTCM_FROM_WIFI
 	enum states { // Use a 'state machine' to open and close the connection
 		open_connection,
 		push_data_and_wait_for_keypress,
@@ -383,6 +413,7 @@ void loop() {
 			}
 			break; 
 	}
+	#endif
 	static short int count = 0;
 	short int length = strlen(ssid);
 	short int RSSI = -120;
