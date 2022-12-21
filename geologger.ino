@@ -8,7 +8,7 @@
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
 // last updated 2022-12-21 by mza
 
-#define DIVISOR (256)
+#define DIVISOR (128)
 #define MAX_UPLOADS (100)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
 //#define GET_RTCM_FROM_WIFI
@@ -93,6 +93,18 @@ bool setup_lora(void);
 //#define RT_CS 6 // resistive touchscreen
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MISO);
 //Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+#define TFT_WIDTH  (240)
+#define TFT_HEIGHT (320)
+#define TFT_TOP_WIDTH     (TFT_WIDTH)
+#define TFT_TOP_HEIGHT    (60)
+#define TFT_BOTTOM_WIDTH  (TFT_WIDTH)
+#define TFT_BOTTOM_HEIGHT (TFT_HEIGHT-TFT_TOP_HEIGHT)
+#define TFT_TOP_X_POSITION (0)
+#define TFT_TOP_Y_POSITION (0)
+#define TFT_BOTTOM_X_POSITION (0)
+#define TFT_BOTTOM_Y_POSITION (TFT_TOP_HEIGHT)
+GFXcanvas1 tft_top(TFT_TOP_WIDTH, TFT_TOP_HEIGHT);
+GFXcanvas1 tft_bottom(TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT);
 
 //#include "AdafruitIO_WiFi.h"
 //AdafruitIO_WiFi io(user, key, ssid, password);
@@ -323,6 +335,8 @@ void setup() {
 	x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
 	Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
 	tft.setFont(&FreeMono9pt7b);
+	tft_top.setFont(&FreeMono9pt7b);
+	tft_bottom.setFont(&FreeMono9pt7b);
 	tft.fillScreen(ILI9341_BLACK);
 	tft.setCursor(0, 10);
 	tft.setTextColor(ILI9341_WHITE); 
@@ -458,28 +472,37 @@ void loop() {
 	short int RSSI = -120;
 	if (0==count%DIVISOR) {
 		int n = WiFi.scanNetworks();
-		tft.fillScreen(ILI9341_BLACK);
-		tft.setCursor(0, 10);
-		tft.print("prec_mm: ");
-		tft.println(horizontal_accuracy_mm);
-		tft.print("#uploads: ");
-		tft.println(number_of_uploads);
-		//tft.setCursor(0, 20);
+		tft_top.fillScreen(ILI9341_BLACK);
+		tft_top.setCursor(0, 10);
+		tft_top.print("prec_mm: ");
+		tft_top.println(horizontal_accuracy_mm);
+		tft_top.print("#uploads: ");
+		tft_top.println(number_of_uploads);
 		if (n == 0) {
 					Serial.println("no networks found");
-					tft.println("no networks found");
+					tft_top.println("no networks found");
 		} else {
 			Serial.print("#networks: ");
 			Serial.println(n);
-			tft.print("#networks: ");
-			tft.println(n);
+			tft_top.print("#networks: ");
+			tft_top.println(n);
+		}
+		//Serial.println("starting to copy top");
+		tft.drawBitmap(TFT_TOP_X_POSITION, TFT_TOP_Y_POSITION, tft_top.getBuffer(), TFT_TOP_WIDTH, TFT_TOP_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); // takes about 2 seconds
+		//Serial.println("done");
+		//tft.drawLine(100, 200, 100, 200+50-1, ILI9341_WHITE);
+		//tft.fillRect(50, 50, 25, 25, ILI9341_WHITE);
+		tft.drawLine(TFT_WIDTH-1, TFT_TOP_Y_POSITION, TFT_WIDTH-1, TFT_TOP_Y_POSITION+TFT_TOP_HEIGHT-1, ILI9341_WHITE);
+		tft_bottom.fillScreen(ILI9341_BLACK);
+		tft_bottom.setCursor(0, 10);
+		if (n != 0) {
 			for (int i = 0; i < n; ++i) {
 				Serial.print(WiFi.RSSI(i));
 				Serial.print(" ");
 				Serial.println(WiFi.SSID(i));
-				tft.print(WiFi.RSSI(i));
-				tft.print(" ");
-				tft.println(WiFi.SSID(i));
+				tft_bottom.print(WiFi.RSSI(i));
+				tft_bottom.print(" ");
+				tft_bottom.println(WiFi.SSID(i));
 				if (strncmp(WiFi.SSID(i).c_str(), ssid, length)) {
 					//Serial.println("match!");
 					if (RSSI<WiFi.RSSI(i)) {
@@ -489,6 +512,10 @@ void loop() {
 				//delay(10);
 			}
 		}
+		//Serial.println("starting to copy bottom");
+		tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
+		//Serial.println("done");
+		tft.drawLine(TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION, TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION+TFT_BOTTOM_HEIGHT-1, ILI9341_WHITE);
 		if (number_of_uploads<MAX_UPLOADS) {
 			//upload_to_feed(RSSI);
 			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
