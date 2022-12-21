@@ -5,13 +5,45 @@
 // yet more from adafruit_04_location
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
-// last updated 2022-12-18 by mza
+// more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
+// last updated 2022-12-21 by mza
 
 #define DIVISOR (256)
 #define MAX_UPLOADS (100)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
 //#define GET_RTCM_FROM_WIFI
-#define POST_WIFI_RSSI_DATA_OVER_WIFI
+//#define POST_WIFI_RSSI_DATA_OVER_WIFI
+//#define POST_WIFI_RSSI_DATA_OVER_LORA
+
+#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
+	#define USE_LORA
+	#define USE_WIFI
+#endif
+#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
+	#define USE_WIFI
+#endif
+#ifdef GET_RTCM_FROM_WIFI
+	#define USE_WIFI
+#endif
+
+#include <SPI.h>
+#include <RH_RF95.h>
+// for feather m0:
+//#define RFM95_CS  8
+//#define RFM95_RST 4
+//#define RFM95_INT 3
+#if defined(ARDUINO_ADAFRUIT_FEATHER_ESP32S2)
+	//#define RFM95_INT (10) // B = IRQ
+	//#define RFM95_CS   (5) // E = CS
+	//#define RFM95_RST  (6) // D = reset
+	#define RFM95_INT (12) // GPIO12 = IRQ
+	#define RFM95_CS  (13) // GPIO13 = CS
+	#define RFM95_RST  (8) // F = GPIO8 = reset
+#endif
+#define RF95_FREQ (905.0)
+RH_RF95 rf95(RFM95_CS, RFM95_INT);
+bool lora_is_available = false;
+bool setup_lora(void);
 
 /*
 	Use ESP32 WiFi to get RTCM data from Swift Navigation's Skylark caster as a Client, and transmit GGA using a callback
@@ -49,14 +81,16 @@
 #include <Adafruit_SPITFT.h>
 #include <Adafruit_GFX.h>
 #include <gfxfont.h>
+#include <Fonts/FreeMono9pt7b.h>
 #include <Adafruit_GrayOLED.h>
 #include <Adafruit_ILI9341.h>
 
 //#define STMPE_CS 6
-#define TFT_CS	 9
-#define TFT_DC	 10
-#define TFT_RESET 6
-//#define SD_CS		5
+#define TFT_CS 9
+#define TFT_DC 10
+#define TFT_RESET (-1) // not connected to feather pins; goes to apx803
+//#define SD_CS 5 // microSD
+//#define RT_CS 6 // resistive touchscreen
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MISO);
 //Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 
@@ -80,18 +114,12 @@ SFE_UBLOX_GNSS myGNSS;
 	#include <Base64.h> //nfriendly library from https://github.com/adamvr/arduino-base64, will work with any platform
 #endif
 
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
-//Global variables
-
 unsigned long lastReceivedRTCM_ms = 0; //5 RTCM messages take approximately ~300ms to arrive at 115200bps
 const unsigned long maxTimeBeforeHangup_ms = 60000UL; //If we fail to get a complete RTCM frame after 60s, then disconnect from caster
 
 bool transmitLocation = true; //By default we will transmit the unit's location via GGA sentence.
 
 WiFiClient ntripClient; // The WiFi connection to the NTRIP server. This is global so pushGGA can see if we are connected.
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 // Callback: pushGPGGA will be called when new GPGGA NMEA data arrives
 // See u-blox_structs.h for the full definition of NMEA_GGA_data_t
@@ -109,8 +137,6 @@ void pushGPGGA(NMEA_GGA_data_t *nmeaData) {
 		ntripClient.print((const char *)nmeaData->nmea);
 	}
 }
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 // Callback: printPVTdata will be called when new NAV PVT data arrives
 // See u-blox_structs.h for the full definition of UBX_NAV_PVT_data_t
@@ -157,8 +183,6 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	ele = altitude / 1000.0;
 	horizontal_accuracy_mm = hAcc;
 }
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 #include <stdint.h>
 #include "WiFiClientSecure.h"
@@ -286,20 +310,28 @@ void setup() {
 		pinMode(PIN_I2C_POWER, OUTPUT);
 		digitalWrite(PIN_I2C_POWER, !polarity);
 	#endif
+	uint8_t x;
+	//x = tft.readcommand8(ILI9341_RDMODE); // 0x94
+	//Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
+	//x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
+	//Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
+	//tft.sendCommand(ILI9341_SWRESET);
+	//delay(150);
 	tft.begin();
-	uint8_t x = tft.readcommand8(ILI9341_RDMODE); // 0x94
+	x = tft.readcommand8(ILI9341_RDMODE); // 0x94
 	Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
 	x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
 	Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
+	tft.setFont(&FreeMono9pt7b);
 	tft.fillScreen(ILI9341_BLACK);
-	tft.setCursor(0, 0);
+	tft.setCursor(0, 10);
 	tft.setTextColor(ILI9341_WHITE); 
-	tft.setTextSize(2);
+	tft.setTextSize(1);
 	tft.setRotation(2);
-	client.setCACert(adafruitio_root_ca); // Set Adafruit IO's root CA
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		Serial.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
+		tft.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
 		delay(2000);
 	}
 	Serial.println(F("u-blox module connected"));
@@ -335,11 +367,12 @@ void setup() {
 		Serial.println("SetVal succeeded");
 	}
 	//myGNSS.saveConfiguration(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_MSGCONF); //Optional: Save the ioPort and message settings to NVM
-	//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+	#ifdef USE_WIFI
+	client.setCACert(adafruitio_root_ca); // Set Adafruit IO's root CA
 	bool keepTrying = true;
 	while (keepTrying) {
-		Serial.println(F("Connecting to local WiFi..."));
-		tft.println(F("Connecting to local WiFi..."));
+		Serial.println(F("Connecting to WiFi..."));
+		tft.println(F("Connecting to WiFi..."));
 		unsigned long startTime = millis();
 		WiFi.begin(ssid, password);
 		while ((WiFi.status() != WL_CONNECTED) && (millis() < (startTime + 10000))) { // Timeout after 10 seconds
@@ -356,13 +389,18 @@ void setup() {
 	}
 	Serial.print(F("WiFi connected with IP: "));
 	Serial.println(WiFi.localIP());
-	//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+	tft.print(F("WiFi connected with IP: "));
+	tft.println(WiFi.localIP());
+	#endif
 	while (Serial.available()) { // Empty the serial buffer
 		Serial.read();
 	}
+	tft.println("one");
+	#ifdef USE_LORA
+		setup_lora();
+	#endif
+	tft.println("two");
 }
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 void loop() {
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
@@ -421,20 +459,20 @@ void loop() {
 	if (0==count%DIVISOR) {
 		int n = WiFi.scanNetworks();
 		tft.fillScreen(ILI9341_BLACK);
-		tft.setCursor(0, 0);
-		tft.print("horizontal_accuracy_mm: ");
+		tft.setCursor(0, 10);
+		tft.print("prec_mm: ");
 		tft.println(horizontal_accuracy_mm);
-		tft.print("number_of_uploads: ");
+		tft.print("#uploads: ");
 		tft.println(number_of_uploads);
 		//tft.setCursor(0, 20);
 		if (n == 0) {
 					Serial.println("no networks found");
 					tft.println("no networks found");
 		} else {
-			Serial.print(n);
-			Serial.println(" networks found");
-			tft.print(n);
-			tft.println(" networks found");
+			Serial.print("#networks: ");
+			Serial.println(n);
+			tft.print("#networks: ");
+			tft.println(n);
 			for (int i = 0; i < n; ++i) {
 				Serial.print(WiFi.RSSI(i));
 				Serial.print(" ");
@@ -448,7 +486,7 @@ void loop() {
 						RSSI = WiFi.RSSI(i);
 					}
 				}
-				delay(10);
+				//delay(10);
 			}
 		}
 		if (number_of_uploads<MAX_UPLOADS) {
@@ -457,14 +495,15 @@ void loop() {
 				#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
 					upload_to_feed_with_location(RSSI, lat, lon, ele);
 				#endif
+				#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
+					send_lora_message_with_location(RSSI, lat, lon, ele);
+				#endif
 			}
 		}
 	}
 	delay(1);
 	count++;
 }
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 //Connect to NTRIP Caster. Return true is connection is successful.
 bool beginClient() {
@@ -567,8 +606,6 @@ bool beginClient() {
 	return (true);
 } // /beginClient
 
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 //Check for the arrival of any correction data. Push it to the GNSS.
 //Return false if: the connection has dropped, or if we receive no data for maxTimeBeforeHangup_ms
 bool processConnection() {
@@ -603,16 +640,12 @@ bool processConnection() {
 	return (true);
 } // /processConnection
 
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-
 void closeConnection() {
 	if (ntripClient.connected() == true) {
 		ntripClient.stop();
 	}
 	Serial.println(F("Disconnected!"));
 }
-
-//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 
 //Return true if a key has been pressed
 bool keyPressed() {
@@ -624,5 +657,58 @@ bool keyPressed() {
 		return (true);
 	}
 	return (false);
+}
+
+bool setup_lora(void) {
+	tft.println("three");
+	pinMode(RFM95_RST, OUTPUT);
+	digitalWrite(RFM95_RST, HIGH);
+	delay(100);
+	digitalWrite(RFM95_RST, LOW);
+	delay(10);
+	digitalWrite(RFM95_RST, HIGH);
+	delay(10);
+	tft.println("four");
+	if (!rf95.init()) {
+		Serial.println("LoRa radio init failed");
+		tft.println("LoRa radio init failed");
+	} else {
+		tft.println("six");
+		Serial.println("LoRa radio init OK!");
+		tft.println("LoRa radio init OK!");
+		if (!rf95.setFrequency(RF95_FREQ)) {
+			Serial.println("LoRa radio set frequency failed");
+			tft.println("LoRa radio set frequency failed");
+		} else {
+			Serial.println("LoRa radio set frequency OK!");
+			tft.println("LoRa radio set frequency OK!");
+		}
+		Serial.print("Set Freq to: "); Serial.println(RF95_FREQ);
+		tft.print("Set Freq to: "); Serial.println(RF95_FREQ);
+		rf95.setTxPower(5, false); // [5,23]
+		lora_is_available = true;
+	}
+	tft.println("five");
+	return lora_is_available;
+}
+
+#define NODEID (4)
+#define MAX_STRING_LENGTH (256)
+bool send_lora_message_with_location(uint32_t value, float latitude, float longitude, float elevation) {
+	static unsigned messageid = 1;
+	char packet[MAX_STRING_LENGTH];
+	sprintf(packet, "node%d[%d] wifi-rssi [%f,%.8f,%.8f,%.3f]", NODEID, messageid++, value, latitude, longitude, elevation);
+	int packet_length = strlen(packet);
+	if (MAX_STRING_LENGTH<packet_length) {
+		packet_length = MAX_STRING_LENGTH;
+	}
+	rf95.send((uint8_t*) packet, packet_length);
+	Serial.print("sending over lora: "); Serial.println(packet);
+	rf95.waitPacketSent();
+	// rf95.waitAvailableTimeout(1000);
+	// rf95.recv(buf, &len)
+	// rf95.lastRssi()
+	delay(2000);
+	return true;
 }
 
