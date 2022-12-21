@@ -556,7 +556,7 @@ void loop() {
 			tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
 			//Serial.println("done");
 		#endif
-		if (0==count%8192) {
+		if (0==count%1024) {
 			send_lora_ping();
 		}
 		if (number_of_uploads<MAX_UPLOADS) {
@@ -812,7 +812,7 @@ int get_lora_rssi(void) {
 
 int send_lora_ping(void) {
 	send_lora_string("ping");
-	lora.waitAvailableTimeout(1000);
+	lora.waitAvailableTimeout(3000);
 	int rssi = 0;
 	uint8_t len = MAX_STRING_LENGTH;
 	lora.recv(recvpacket, &len);
