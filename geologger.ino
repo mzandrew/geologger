@@ -77,11 +77,11 @@ bool setup_lora(void);
 #include <WiFi.h>
 #include "secrets.h"
 
-#include <Adafruit_SPITFT_Macros.h>
-#include <Adafruit_SPITFT.h>
-#include <Adafruit_GFX.h>
-#include <gfxfont.h>
-#include <Adafruit_GrayOLED.h>
+//#include <Adafruit_SPITFT_Macros.h>
+//#include <Adafruit_SPITFT.h>
+//#include <Adafruit_GFX.h>
+//#include <gfxfont.h>
+//#include <Adafruit_GrayOLED.h>
 #include <Adafruit_ILI9341.h>
 
 //#define STMPE_CS 6
@@ -94,7 +94,7 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MI
 //Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
 #define TFT_WIDTH  (240)
 #define TFT_HEIGHT (320)
-#define USE_BLITTER (1)
+//#define USE_BLITTER
 #ifdef USE_BLITTER
 	#include <Fonts/FreeMono9pt7b.h>
 	#define TFT_TOP_WIDTH     (TFT_WIDTH)
@@ -107,6 +107,10 @@ Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MI
 	#define TFT_BOTTOM_Y_POSITION (TFT_TOP_HEIGHT)
 	GFXcanvas1 tft_top(TFT_TOP_WIDTH, TFT_TOP_HEIGHT);
 	GFXcanvas1 tft_bottom(TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT);
+#else
+	#define LENGTH_OF_LINE (21)
+	#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
+	char line[LENGTH_OF_LINE] = "";
 #endif
 
 //#include "AdafruitIO_WiFi.h"
@@ -341,11 +345,12 @@ void setup() {
 		tft.setFont(&FreeMono9pt7b);
 		tft_top.setFont(&FreeMono9pt7b);
 		tft_bottom.setFont(&FreeMono9pt7b);
+		tft.setTextSize(1);
 	#endif
+	tft.setTextSize(2);
 	tft.fillScreen(ILI9341_BLACK);
 	tft.setCursor(0, 10);
-	tft.setTextColor(ILI9341_WHITE); 
-	tft.setTextSize(1);
+	tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
 	tft.setRotation(2);
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
@@ -484,11 +489,20 @@ void loop() {
 			tft_top.println(horizontal_accuracy_mm);
 			tft_top.print("#uploads: ");
 			tft_top.println(number_of_uploads);
+		#else
+			tft.setCursor(0, 0);
+			snprintf(line, LENGTH_OF_LINE, "prec_mm: %-*d", LENGTH_OF_LINE-9, horizontal_accuracy_mm);
+			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "#uploads: %-*d", LENGTH_OF_LINE-10, number_of_uploads);
+			tft.println(line);
 		#endif
 		if (n == 0) {
 					Serial.println("no networks found");
 					#ifdef USE_BLITTER
 						tft_top.println("no networks found");
+					#else
+						snprintf(line, LENGTH_OF_LINE, "%-*s", LENGTH_OF_LINE, "no networks found");
+						tft.println(line);
 					#endif
 		} else {
 			Serial.print("#networks: ");
@@ -496,6 +510,9 @@ void loop() {
 			#ifdef USE_BLITTER
 				tft_top.print("#networks: ");
 				tft_top.println(n);
+			#else
+				snprintf(line, LENGTH_OF_LINE, "#networks: %-*d", LENGTH_OF_LINE-11, n);
+				tft.println(line);
 			#endif
 		}
 		#ifdef USE_BLITTER
@@ -515,6 +532,9 @@ void loop() {
 					tft_bottom.print(WiFi.RSSI(i));
 					tft_bottom.print(" ");
 					tft_bottom.println(WiFi.SSID(i));
+				#else
+					snprintf(line, LENGTH_OF_LINE, "%3d %-*s", WiFi.RSSI(i), LENGTH_OF_SSID, WiFi.SSID(i).c_str());
+					tft.println(line);
 				#endif
 				if (strncmp(WiFi.SSID(i).c_str(), ssid, length)) {
 					//Serial.println("match!");
