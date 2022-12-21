@@ -13,7 +13,7 @@
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
 //#define GET_RTCM_FROM_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_WIFI
-//#define POST_WIFI_RSSI_DATA_OVER_LORA
+#define POST_WIFI_RSSI_DATA_OVER_LORA
 
 #ifdef POST_WIFI_RSSI_DATA_OVER_LORA
 	#define USE_LORA
@@ -21,6 +21,7 @@
 #endif
 #ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
 	#define USE_WIFI
+	#define CONNECT_TO_WIFI_NETWORK
 #endif
 #ifdef GET_RTCM_FROM_WIFI
 	#define USE_WIFI
@@ -40,8 +41,8 @@
 	#define RFM95_CS  (13) // GPIO13 = CS
 	#define RFM95_RST  (8) // F = GPIO8 = reset
 #endif
-#define RF95_FREQ (905.0)
-RH_RF95 rf95(RFM95_CS, RFM95_INT);
+#define LORA_FREQ (905.0)
+RH_RF95 lora(RFM95_CS, RFM95_INT);
 bool lora_is_available = false;
 bool setup_lora(void);
 
@@ -330,17 +331,8 @@ void setup() {
 		digitalWrite(PIN_I2C_POWER, !polarity);
 	#endif
 	uint8_t x;
-	//x = tft.readcommand8(ILI9341_RDMODE); // 0x94
-	//Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
-	//x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
-	//Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
-	//tft.sendCommand(ILI9341_SWRESET);
-	//delay(150);
 	tft.begin();
-	x = tft.readcommand8(ILI9341_RDMODE); // 0x94
-	Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
-	x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
-	Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
+	check_tft();
 	#ifdef USE_BLITTER
 		tft.setFont(&FreeMono9pt7b);
 		tft_top.setFont(&FreeMono9pt7b);
@@ -391,7 +383,7 @@ void setup() {
 		Serial.println("SetVal succeeded");
 	}
 	//myGNSS.saveConfiguration(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_MSGCONF); //Optional: Save the ioPort and message settings to NVM
-	#ifdef USE_WIFI
+	#ifdef CONNECT_TO_WIFI_NETWORK
 	client.setCACert(adafruitio_root_ca); // Set Adafruit IO's root CA
 	bool keepTrying = true;
 	while (keepTrying) {
@@ -420,10 +412,23 @@ void setup() {
 		Serial.read();
 	}
 	tft.println("one");
+	check_tft();
+	//pinMode(RFM95_CS, OUTPUT);
+	//digitalWrite(RFM95_CS, HIGH);
+	//pinMode(TFT_CS, OUTPUT);
+	//digitalWrite(TFT_CS, HIGH);
 	#ifdef USE_LORA
 		setup_lora();
+		send_lora_string("coming online");
 	#endif
-	tft.println("two");
+	//pinMode(RFM95_CS, OUTPUT);
+	//digitalWrite(RFM95_CS, HIGH);
+	//pinMode(TFT_CS, OUTPUT);
+	//digitalWrite(TFT_CS, HIGH);
+	//tft.println("two");
+	check_tft();
+	//reset_tft();
+	//check_tft();
 }
 
 void loop() {
@@ -551,6 +556,9 @@ void loop() {
 			tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
 			//Serial.println("done");
 		#endif
+		if (0==count%8192) {
+			send_lora_ping();
+		}
 		if (number_of_uploads<MAX_UPLOADS) {
 			//upload_to_feed(RSSI);
 			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
@@ -558,7 +566,7 @@ void loop() {
 					upload_to_feed_with_location(RSSI, lat, lon, ele);
 				#endif
 				#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
-					send_lora_message_with_location(RSSI, lat, lon, ele);
+					send_lora_value_with_location(RSSI, lat, lon, ele, "wifi-rssi");
 				#endif
 			}
 		}
@@ -721,56 +729,99 @@ bool keyPressed() {
 	return (false);
 }
 
+bool reset_tft(void) {
+	tft.sendCommand(ILI9341_SWRESET);
+	delay(150);
+	return true;
+}
+
+bool check_tft(void) {
+	uint8_t x;
+	x = tft.readcommand8(ILI9341_RDMODE); // 0x94
+	Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
+	x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
+	Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
+	return true;
+}
+
 bool setup_lora(void) {
-	tft.println("three");
-	pinMode(RFM95_RST, OUTPUT);
-	digitalWrite(RFM95_RST, HIGH);
-	delay(100);
-	digitalWrite(RFM95_RST, LOW);
-	delay(10);
-	digitalWrite(RFM95_RST, HIGH);
-	delay(10);
-	tft.println("four");
-	if (!rf95.init()) {
+//	tft.println("three");
+//	pinMode(RFM95_RST, OUTPUT);
+//	digitalWrite(RFM95_RST, HIGH);
+//	delay(100);
+//	digitalWrite(RFM95_RST, LOW);
+//	delay(10);
+//	digitalWrite(RFM95_RST, HIGH);
+//	delay(10);
+//	tft.println("four");
+	if (!lora.init()) {
 		Serial.println("LoRa radio init failed");
-		tft.println("LoRa radio init failed");
+		//tft.println("LoRa radio init failed");
 	} else {
-		tft.println("six");
+//		tft.println("six");
 		Serial.println("LoRa radio init OK!");
-		tft.println("LoRa radio init OK!");
-		if (!rf95.setFrequency(RF95_FREQ)) {
+		//tft.println("LoRa radio init OK!");
+		if (!lora.setFrequency(LORA_FREQ)) {
 			Serial.println("LoRa radio set frequency failed");
-			tft.println("LoRa radio set frequency failed");
+			//tft.println("LoRa radio set frequency failed");
 		} else {
 			Serial.println("LoRa radio set frequency OK!");
-			tft.println("LoRa radio set frequency OK!");
+			//tft.println("LoRa radio set frequency OK!");
 		}
-		Serial.print("Set Freq to: "); Serial.println(RF95_FREQ);
-		tft.print("Set Freq to: "); Serial.println(RF95_FREQ);
-		rf95.setTxPower(5, false); // [5,23]
+		Serial.print("Set Freq to: "); Serial.println(LORA_FREQ);
+		//tft.print("Set Freq to: "); Serial.println(LORA_FREQ);
+		lora.setTxPower(5, false); // [5,23]
 		lora_is_available = true;
 	}
-	tft.println("five");
+//	tft.println("five");
 	return lora_is_available;
 }
 
 #define NODEID (4)
-#define MAX_STRING_LENGTH (256)
-bool send_lora_message_with_location(uint32_t value, float latitude, float longitude, float elevation) {
+#define MAX_STRING_LENGTH (255) // uint8_t RH_RF95::maxMessageLength()
+#define PREFIX "SCOOPY"
+#define SUFFIX "BOOPS"
+uint8_t recvpacket[MAX_STRING_LENGTH];
+
+bool send_lora_string(const char *string) {
 	static unsigned messageid = 1;
-	char packet[MAX_STRING_LENGTH];
-	sprintf(packet, "node%d[%d] wifi-rssi [%f,%.8f,%.8f,%.3f]", NODEID, messageid++, value, latitude, longitude, elevation);
-	int packet_length = strlen(packet);
-	if (MAX_STRING_LENGTH<packet_length) {
-		packet_length = MAX_STRING_LENGTH;
-	}
-	rf95.send((uint8_t*) packet, packet_length);
-	Serial.print("sending over lora: "); Serial.println(packet);
-	rf95.waitPacketSent();
-	// rf95.waitAvailableTimeout(1000);
-	// rf95.recv(buf, &len)
-	// rf95.lastRssi()
-	delay(2000);
+	char sendpacket1[MAX_STRING_LENGTH];
+	snprintf(sendpacket1, MAX_STRING_LENGTH, "node%d[%d] %s", NODEID, messageid++, string);
+	Serial.print("sending over lora: "); Serial.println(sendpacket1);
+	char sendpacket2[MAX_STRING_LENGTH];
+	snprintf(sendpacket2, MAX_STRING_LENGTH, "%s%s%s", PREFIX, sendpacket1, SUFFIX);
+	int packet_length = strlen(sendpacket2);
+//	if (MAX_STRING_LENGTH<packet_length) {
+//		packet_length = MAX_STRING_LENGTH;
+//	}
+	lora.send((uint8_t*) sendpacket2, packet_length);
+	lora.waitPacketSent();
 	return true;
+}
+
+bool send_lora_value_with_location(uint32_t value, float latitude, float longitude, float elevation, const char *string) {
+	char sendpacket[MAX_STRING_LENGTH];
+	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%f,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
+	return send_lora_string(sendpacket);
+}
+
+int get_lora_rssi(void) {
+	int rssi = lora.lastRssi();
+	return rssi;
+}
+
+int send_lora_ping(void) {
+	send_lora_string("ping");
+	lora.waitAvailableTimeout(1000);
+	int rssi = 0;
+	uint8_t len = MAX_STRING_LENGTH;
+	lora.recv(recvpacket, &len);
+	if (0<len) {
+		Serial.println((const char *) recvpacket);
+		rssi = lora.lastRssi();
+		Serial.println(rssi);
+	}
+	//return len;
+	return rssi;
 }
 
