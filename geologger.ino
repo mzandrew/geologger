@@ -590,7 +590,9 @@ void loop() {
 				#endif
 				#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
 					send_lora_int_with_location(wifi_rssi, lat, lon, ele, "wifi-rssi");
+				#endif
 				#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+					delay(2000);
 					send_lora_ping();
 					if (RSSI_THRESHOLD<lora_rssi_ping) {
 						send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
@@ -599,7 +601,6 @@ void loop() {
 					if (RSSI_THRESHOLD<lora_rssi_pong) {
 						send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
 					}
-				#endif
 				#endif
 			}
 		}
