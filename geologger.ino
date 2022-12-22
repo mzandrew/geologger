@@ -143,6 +143,12 @@ bool setup_lora(void);
 //AdafruitIO_WiFi io(user, key, ssid, password);
 //AdafruitIO_Feed *myfeed = io.feed(feed);
 
+uint8_t fixType = 0;
+String fixTypeString[] = { "none", "dead_reck", "2d", "3d", "gnss+dead_reck", "time_only", "unknown" };
+#define MAX_VALID_FIXTYPE (6)
+uint8_t carrSoln = 0;
+String carrSolnString[] = { "none", "floating", "fixed", "unknown" };
+#define MAX_VALID_CARRSOLN (3)
 double lat = 44.444444;
 double lon = -77.777777;
 double ele = 1.111111;
@@ -196,30 +202,29 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	Serial.print(F("Lat: "));
 	Serial.print(latitude / 10000000.0, 7);
 	double longitude = ubxDataStruct->lon; // Print the longitude
-	Serial.print(F("  Long: "));
+	Serial.print(F(" Long: "));
 	Serial.print(longitude / 10000000.0, 7);
 	double altitude = ubxDataStruct->hMSL; // Print the height above mean sea level
-	Serial.print(F("  Height: "));
+	Serial.print(F(" Height: "));
 	Serial.print(altitude / 1000.0, 3);
-	uint8_t fixType = ubxDataStruct->fixType; // Print the fix type
-	Serial.print(F("  Fix: "));
+	fixType = ubxDataStruct->fixType; // Print the fix type
+	if (MAX_VALID_FIXTYPE<fixType) {
+		fixType = MAX_VALID_FIXTYPE;
+	}
+	Serial.print(F(" Fix: "));
 	Serial.print(fixType);
-	if (fixType == 0) Serial.print(F(" (None)"));
-	else if (fixType == 1) Serial.print(F(" (Dead Reckoning)"));
-	else if (fixType == 2) Serial.print(F(" (2D)"));
-	else if (fixType == 3) Serial.print(F(" (3D)"));
-	else if (fixType == 3) Serial.print(F(" (GNSS + Dead Reckoning)"));
-	else if (fixType == 5) Serial.print(F(" (Time Only)"));
-	else Serial.print(F(" (UNKNOWN)"));
-	uint8_t carrSoln = ubxDataStruct->flags.bits.carrSoln; // Print the carrier solution
-	Serial.print(F("  Carrier Solution: "));
+	Serial.print(" ");
+	Serial.print(fixTypeString[fixType]);
+	carrSoln = ubxDataStruct->flags.bits.carrSoln; // Print the carrier solution
+	if (MAX_VALID_CARRSOLN<carrSoln) {
+		fixType = MAX_VALID_CARRSOLN;
+	}
+	Serial.print(F(" Carrier Solution: "));
 	Serial.print(carrSoln);
-	if (carrSoln == 0) Serial.print(F(" (None)"));
-	else if (carrSoln == 1) Serial.print(F(" (Floating)"));
-	else if (carrSoln == 2) Serial.print(F(" (Fixed)"));
-	else Serial.print(F(" (UNKNOWN)"));
+	Serial.print(" ");
+	Serial.print(carrSolnString[carrSoln]);
 	uint32_t hAcc = ubxDataStruct->hAcc; // Print the horizontal accuracy estimate
-	Serial.print(F("  Horizontal Accuracy Estimate: "));
+	Serial.print(F(" Horizontal Accuracy: "));
 	Serial.print(hAcc);
 	Serial.print(F(" (mm)"));
 	Serial.println();
@@ -543,13 +548,20 @@ void loop() {
 			tft_top.println(horizontal_accuracy_mm);
 			tft_top.print("#uploads: ");
 			tft_top.println(number_of_uploads);
+			// could add fixType here...
 		#else
 			tft.setCursor(0, 0);
 			snprintf(line, LENGTH_OF_LINE, "prec_mm: %-*d", LENGTH_OF_LINE-9, horizontal_accuracy_mm);
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "#uploads: %-*d", LENGTH_OF_LINE-10, number_of_uploads);
 			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE-9, fixTypeString[fixType].c_str());
+			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE-10, carrSolnString[carrSoln].c_str());
+
+			tft.println(line);
 		#endif
+		#ifdef USE_WIFI
 		if (n == 0) {
 					Serial.println("no networks found");
 					#ifdef USE_BLITTER
@@ -569,6 +581,7 @@ void loop() {
 				tft.println(line);
 			#endif
 		}
+		#endif
 		#ifdef USE_BLITTER
 			tft.drawLine(TFT_WIDTH-1, TFT_TOP_Y_POSITION, TFT_WIDTH-1, TFT_TOP_Y_POSITION+TFT_TOP_HEIGHT-1, ILI9341_WHITE);
 			//Serial.println("starting to copy top");
