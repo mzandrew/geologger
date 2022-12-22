@@ -8,12 +8,15 @@
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
 // last updated 2022-12-21 by mza
 
+#define RSSI_THRESHOLD (-150)
+#define JUNK_RSSI (-151)
 #define DIVISOR (128)
 #define MAX_UPLOADS (100)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
 //#define GET_RTCM_FROM_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_WIFI
-#define POST_WIFI_RSSI_DATA_OVER_LORA
+//#define POST_WIFI_RSSI_DATA_OVER_LORA
+#define POST_LORA_RSSI_DATA_OVER_LORA
 
 #ifdef POST_WIFI_RSSI_DATA_OVER_LORA
 	#define USE_LORA
@@ -25,6 +28,12 @@
 #endif
 #ifdef GET_RTCM_FROM_WIFI
 	#define USE_WIFI
+	#define CONNECT_TO_WIFI_NETWORK
+#endif
+#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+	#define USE_LORA
+	int lora_rssi_ping = JUNK_RSSI;
+	int lora_rssi_pong = JUNK_RSSI;
 #endif
 
 #include <SPI.h>
@@ -484,9 +493,12 @@ void loop() {
 	#endif
 	static short int count = 0;
 	short int length = strlen(ssid);
-	short int RSSI = -120;
+	int wifi_rssi = JUNK_RSSI;
 	if (0==count%DIVISOR) {
-		int n = WiFi.scanNetworks();
+		int n = 0;
+		#ifdef USE_WIFI
+		n = WiFi.scanNetworks();
+		#endif
 		#ifdef USE_BLITTER
 			tft_top.fillScreen(ILI9341_BLACK);
 			tft_top.setCursor(0, 10);
@@ -528,6 +540,7 @@ void loop() {
 			tft_bottom.fillScreen(ILI9341_BLACK);
 			tft_bottom.setCursor(0, 10);
 		#endif
+		#ifdef USE_WIFI
 		if (n != 0) {
 			for (int i = 0; i < n; ++i) {
 				Serial.print(WiFi.RSSI(i));
@@ -543,35 +556,58 @@ void loop() {
 				#endif
 				if (strncmp(WiFi.SSID(i).c_str(), ssid, length)) {
 					//Serial.println("match!");
-					if (RSSI<WiFi.RSSI(i)) {
-						RSSI = WiFi.RSSI(i);
+					if (wifi_rssi<WiFi.RSSI(i)) {
+						wifi_rssi = WiFi.RSSI(i);
 					}
 				}
 				//delay(10);
 			}
 		}
+		#endif
 		#ifdef USE_BLITTER
 			tft.drawLine(TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION, TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION+TFT_BOTTOM_HEIGHT-1, ILI9341_WHITE);
 			//Serial.println("starting to copy bottom");
 			tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
 			//Serial.println("done");
 		#endif
-		if (0==count%1024) {
-			send_lora_ping();
-		}
+		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+			if (0==count%1024) {
+				send_lora_ping();
+				if (RSSI_THRESHOLD<lora_rssi_ping) {
+					send_lora_int(lora_rssi_ping, "lora-rssi-ping");
+				}
+				delay(2000);
+				if (RSSI_THRESHOLD<lora_rssi_pong) {
+					send_lora_int(lora_rssi_pong, "lora-rssi-pong");
+				}
+			}
+		#endif
 		if (number_of_uploads<MAX_UPLOADS) {
-			//upload_to_feed(RSSI);
+			//upload_to_feed(wifi_rssi);
 			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
 				#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
-					upload_to_feed_with_location(RSSI, lat, lon, ele);
+					upload_to_feed_with_location(wifi_rssi, lat, lon, ele);
 				#endif
 				#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
-					send_lora_value_with_location(RSSI, lat, lon, ele, "wifi-rssi");
+					send_lora_int_with_location(wifi_rssi, lat, lon, ele, "wifi-rssi");
+				#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+					send_lora_ping();
+					if (RSSI_THRESHOLD<lora_rssi_ping) {
+						send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
+					}
+					delay(2000);
+					if (RSSI_THRESHOLD<lora_rssi_pong) {
+						send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
+					}
+				#endif
 				#endif
 			}
 		}
 	}
 	delay(1);
+	#ifndef USE_WIFI
+		delay(8);
+	#endif
 	count++;
 }
 
@@ -744,6 +780,8 @@ bool check_tft(void) {
 	return true;
 }
 
+#ifdef USE_LORA
+
 bool setup_lora(void) {
 //	tft.println("three");
 //	pinMode(RFM95_RST, OUTPUT);
@@ -779,9 +817,10 @@ bool setup_lora(void) {
 
 #define NODEID (4)
 #define MAX_STRING_LENGTH (255) // uint8_t RH_RF95::maxMessageLength()
-#define PREFIX "SCOOPY"
-#define SUFFIX "BOOPS"
+const char PREFIX[]="SCOOPY";
+const char SUFFIX[]="BOOPS";
 uint8_t recvpacket[MAX_STRING_LENGTH];
+char message[MAX_STRING_LENGTH];
 
 bool send_lora_string(const char *string) {
 	static unsigned messageid = 1;
@@ -799,9 +838,27 @@ bool send_lora_string(const char *string) {
 	return true;
 }
 
-bool send_lora_value_with_location(uint32_t value, float latitude, float longitude, float elevation, const char *string) {
+bool send_lora_float_with_location(float value, float latitude, float longitude, float elevation, const char *string) {
 	char sendpacket[MAX_STRING_LENGTH];
 	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%f,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
+	return send_lora_string(sendpacket);
+}
+
+bool send_lora_int_with_location(int value, float latitude, float longitude, float elevation, const char *string) {
+	char sendpacket[MAX_STRING_LENGTH];
+	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%d,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
+	return send_lora_string(sendpacket);
+}
+
+bool send_lora_float(float value, const char *string) {
+	char sendpacket[MAX_STRING_LENGTH];
+	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%f]", string, value);
+	return send_lora_string(sendpacket);
+}
+
+bool send_lora_int(int value, const char *string) {
+	char sendpacket[MAX_STRING_LENGTH];
+	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%d]", string, value);
 	return send_lora_string(sendpacket);
 }
 
@@ -810,18 +867,179 @@ int get_lora_rssi(void) {
 	return rssi;
 }
 
-int send_lora_ping(void) {
-	send_lora_string("ping");
-	lora.waitAvailableTimeout(3000);
-	int rssi = 0;
-	uint8_t len = MAX_STRING_LENGTH;
-	lora.recv(recvpacket, &len);
-	if (0<len) {
-		Serial.println((const char *) recvpacket);
-		rssi = lora.lastRssi();
-		Serial.println(rssi);
+bool parse_lora_raw(const char *raw_message) {
+	// compare to regexp: re.search("^" + PREFIX + "node([0-9]+)\[([0-9]+)\](.*)" + SUFFIX + "$", packet_text)
+	int len = strnlen(raw_message, MAX_STRING_LENGTH);
+	Serial.print("received lora string length: ");
+	Serial.println(len);
+	Serial.println(raw_message);
+//	int section = 0;
+	int p = strlen(PREFIX);
+	int s = strlen(SUFFIX);
+	// "SCOOPYnode1[185] pong rssi=-101BOOPS"
+	if (len<p+s) {
+		Serial.println("message too short for prefix+suffix");
+		return false;
 	}
-	//return len;
-	return rssi;
+	int i = 0;
+	int j = 0;
+	for (i=0, j=0; i<p, j<p; i++, j++) {
+		if (raw_message[i]!=PREFIX[j]) {
+			Serial.print("message does not match prefix at index ");
+			Serial.println(i);
+			Serial.println(j);
+			return false;
+		}
+	}
+	for (i=len-1, j=s-1; i<=len-s, j<=0; i--, j--) {
+		if (raw_message[i]!=SUFFIX[j]) {
+			Serial.print("message does not match suffix at index ");
+			Serial.println(i);
+			Serial.println(j);
+			return false;
+		}
+	}
+	const char NODE[] = "node";
+	int string_len = strlen(NODE);
+	for (i=p, j=0; i<p+string_len-1, j<string_len; i++, j++) { // i off-by-frog
+		if (raw_message[i]!=NODE[j]) {
+			Serial.print("message does not match \"node\" at index ");
+			Serial.println(i);
+			Serial.println(j);
+			return false;
+		}
+	}
+	i++; // i off-by-frog
+	for (; i<len-s; i++) {
+		bool match = false;
+		for (j=0; j<10; j++) {
+			if (raw_message[i]=='0'+j) {
+				match = true;
+			} else if (raw_message[i]=='[') {
+				goto next1;
+			}
+		}
+		if (!match) {
+			Serial.print("message does not match [0-9] at index ");
+			Serial.println(i);
+			return false;
+		}
+	}
+next1:
+	if (raw_message[i]!='[') {
+		Serial.print("message does not match [ at index ");
+		Serial.println(i);
+		return false;
+	}
+	i++;
+	for (; i<len-s; i++) {
+		bool match = false;
+		for (j=0; j<10; j++) {
+			if (raw_message[i]=='0'+j) {
+				match = true;
+			} else if (raw_message[i]==']') {
+				goto next2;
+			}
+		}
+		if (!match) {
+			Serial.print("message does not match [0-9] at index ");
+			Serial.println(i);
+			return false;
+		}
+	}
+next2:
+	if (raw_message[i]!=']') {
+		Serial.print("message does not match ] at index ");
+		Serial.println(i);
+		return false;
+	}
+	i++;
+	if (raw_message[i]!=' ') {
+		Serial.print("message does not match <space> at index ");
+		Serial.println(i);
+		return false;
+	}
+	i++;
+	strncpy(message, raw_message+i, len-s-i);
+	message[len-s-i] = 0;
+	Serial.print("remaining message: ");
+	Serial.println(message);
+	return true;
 }
+
+bool parse_lora_message(const char *string) {
+	// "pong rssi=-101"
+	int string_len = strlen(string);
+	int len = strnlen(message, MAX_STRING_LENGTH);
+	int i = 0;
+	int j = 0;
+	for (i=0; i<len, j<string_len; i++, j++) {
+		if (message[i]!=string[j]) {
+			Serial.print("message does not match ");
+			Serial.print(string);
+			Serial.print(" at index ");
+			Serial.println(i);
+			Serial.println(j);
+			return false;
+		}
+	}
+	const char RSSI[] = " rssi=-";
+	string_len = strlen(RSSI);
+	for (j=0; i<len, j<string_len; i++, j++) {
+		if (message[i]!=RSSI[j]) {
+			Serial.print("message does not match \" rssi=-\" at index ");
+			Serial.println(i);
+			Serial.println(j);
+			return false;
+		}
+	}
+	int index_a = i;
+	for (; i<len; i++) {
+		bool match = false;
+		for (j=0; j<10; j++) {
+			if (message[i]=='0'+j) {
+				match = true;
+			}
+		}
+		if (!match) {
+			Serial.print("message does not match [0-9] at index ");
+			Serial.println(i);
+			return false;
+		}
+	}
+	int index_b = i;
+	char numeric_string[MAX_STRING_LENGTH];
+	strncpy(numeric_string, message+index_a, index_b-index_a);
+	numeric_string[index_b-index_a] = 0;
+	lora_rssi_ping = -atoi(numeric_string);
+	return true;
+}
+
+#define MAX_TRIES 8
+void send_lora_ping(void) {
+	lora_rssi_ping = JUNK_RSSI;
+	lora_rssi_pong = JUNK_RSSI;
+	uint8_t len;
+	send_lora_string("ping");
+	lora.waitAvailableTimeout(1000);
+	for (int i=0; i<MAX_TRIES; i++) {
+		len = MAX_STRING_LENGTH;
+		lora.recv(recvpacket, &len);
+		if (0<len) {
+			recvpacket[len] = 0;
+			if (parse_lora_raw((const char *) recvpacket)) {
+				if (parse_lora_message("pong")) {
+					Serial.print("got a response: ");
+					Serial.println(message);
+					lora_rssi_pong = lora.lastRssi();
+					Serial.print("response rssi: ");
+					Serial.println(lora_rssi_pong);
+					break;
+				}
+			}
+		}
+	}
+}
+
+#endif
 
