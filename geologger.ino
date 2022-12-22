@@ -43,7 +43,13 @@
 //#define RFM95_CS  8
 //#define RFM95_RST 4
 //#define RFM95_INT 3
-#if defined(ARDUINO_ADAFRUIT_FEATHER_ESP32S2)
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
+	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
+#endif
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
+	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
+#endif
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
 	//#define RFM95_INT (10) // B = IRQ
 	//#define RFM95_CS   (5) // E = CS
 	//#define RFM95_RST  (6) // D = reset
@@ -93,18 +99,27 @@ bool setup_lora(void);
 //#include <Adafruit_GFX.h>
 //#include <gfxfont.h>
 //#include <Adafruit_GrayOLED.h>
-#include <Adafruit_ILI9341.h>
 
 //#define STMPE_CS 6
-#define TFT_CS 9
-#define TFT_DC 10
-#define TFT_RESET (-1) // not connected to feather pins; goes to apx803
-//#define SD_CS 5 // microSD
-//#define RT_CS 6 // resistive touchscreen
-Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MISO);
-//Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-#define TFT_WIDTH  (240)
-#define TFT_HEIGHT (320)
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
+	#include <Adafruit_ILI9341.h>
+	#define TFT_CS 9
+	#define TFT_DC 10
+	#define TFT_RESET (-1) // not connected to feather pins; goes to apx803
+	//#define SD_CS 5 // microSD
+	//#define RT_CS 6 // resistive touchscreen
+	Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MISO);
+	//Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
+	#define TFT_WIDTH  (240)
+	#define TFT_HEIGHT (320)
+#endif
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
+	#include <Adafruit_ST7789.h>
+	Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+	#define TFT_WIDTH  (240)
+	#define TFT_HEIGHT (135)
+#endif
+
 //#define USE_BLITTER
 #ifdef USE_BLITTER
 	#include <Fonts/FreeMono9pt7b.h>
@@ -332,7 +347,7 @@ void setup() {
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
 	#endif
-	#if defined(ARDUINO_ADAFRUIT_FEATHER_ESP32S2)
+	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
 		#define PIN_I2C_POWER (7)
 		pinMode(PIN_I2C_POWER, INPUT);
 		delay(1);
@@ -341,19 +356,34 @@ void setup() {
 		digitalWrite(PIN_I2C_POWER, !polarity);
 	#endif
 	uint8_t x;
-	tft.begin();
-	check_tft();
-	#ifdef USE_BLITTER
-		tft.setFont(&FreeMono9pt7b);
-		tft_top.setFont(&FreeMono9pt7b);
-		tft_bottom.setFont(&FreeMono9pt7b);
-		tft.setTextSize(1);
+	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
+		tft.begin();
+		check_tft();
+		#ifdef USE_BLITTER
+			tft.setFont(&FreeMono9pt7b);
+			tft_top.setFont(&FreeMono9pt7b);
+			tft_bottom.setFont(&FreeMono9pt7b);
+			tft.setTextSize(1);
+		#endif
+		tft.setCursor(0, 10);
+		tft.setRotation(2);
+		tft.fillScreen(ILI9341_BLACK);
+		tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
+	#endif
+	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
+		pinMode(TFT_I2C_POWER, OUTPUT);
+		digitalWrite(TFT_I2C_POWER, HIGH);
+		delay(100);
+		// https://learn.adafruit.com/adafruit-esp32-s2-tft-feather/built-in-tft
+		pinMode(TFT_BACKLITE, OUTPUT);
+		digitalWrite(TFT_BACKLITE, HIGH);
+		tft.init(TFT_HEIGHT, TFT_WIDTH); // Init ST7789 240x135
+		tft.setRotation(3);
+		tft.fillScreen(ST77XX_BLACK);
+		tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 	#endif
 	tft.setTextSize(2);
-	tft.fillScreen(ILI9341_BLACK);
-	tft.setCursor(0, 10);
-	tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-	tft.setRotation(2);
+	tft.println("tft initialized");
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		Serial.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
@@ -422,23 +452,29 @@ void setup() {
 		Serial.read();
 	}
 	tft.println("one");
-	check_tft();
+	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
+		check_tft();
+	#endif
 	//pinMode(RFM95_CS, OUTPUT);
 	//digitalWrite(RFM95_CS, HIGH);
 	//pinMode(TFT_CS, OUTPUT);
 	//digitalWrite(TFT_CS, HIGH);
 	#ifdef USE_LORA
 		setup_lora();
-		send_lora_string("coming online");
+		if (lora_is_available) {
+			send_lora_string("coming online");
+		}
 	#endif
 	//pinMode(RFM95_CS, OUTPUT);
 	//digitalWrite(RFM95_CS, HIGH);
 	//pinMode(TFT_CS, OUTPUT);
 	//digitalWrite(TFT_CS, HIGH);
 	//tft.println("two");
-	check_tft();
-	//reset_tft();
-	//check_tft();
+	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
+		check_tft();
+		//reset_tft();
+		//check_tft();
+	#endif
 }
 
 void loop() {
@@ -574,13 +610,15 @@ void loop() {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			#ifdef DEBUG_LORA_RSSI
 				if (0==count%1024) {
-					send_lora_ping();
-					if (RSSI_THRESHOLD<lora_rssi_ping) {
-						send_lora_int(lora_rssi_ping, "lora-rssi-ping");
-					}
-					delay(2000);
-					if (RSSI_THRESHOLD<lora_rssi_pong) {
-						send_lora_int(lora_rssi_pong, "lora-rssi-pong");
+					if (lora_is_available) {
+						send_lora_ping();
+						if (RSSI_THRESHOLD<lora_rssi_ping) {
+							send_lora_int(lora_rssi_ping, "lora-rssi-ping");
+						}
+						delay(2000);
+						if (RSSI_THRESHOLD<lora_rssi_pong) {
+							send_lora_int(lora_rssi_pong, "lora-rssi-pong");
+						}
 					}
 				}
 			#endif
@@ -595,14 +633,16 @@ void loop() {
 					send_lora_int_with_location(wifi_rssi, lat, lon, ele, "wifi-rssi");
 				#endif
 				#ifdef POST_LORA_RSSI_DATA_OVER_LORA
-					delay(2000);
-					send_lora_ping();
-					if (RSSI_THRESHOLD<lora_rssi_ping) {
-						send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
-					}
-					delay(2000);
-					if (RSSI_THRESHOLD<lora_rssi_pong) {
-						send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
+					if (lora_is_available) {
+						delay(2000);
+						send_lora_ping();
+						if (RSSI_THRESHOLD<lora_rssi_ping) {
+							send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
+						}
+						delay(2000);
+						if (RSSI_THRESHOLD<lora_rssi_pong) {
+							send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
+						}
 					}
 				#endif
 			}
@@ -769,6 +809,7 @@ bool keyPressed() {
 	return (false);
 }
 
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
 bool reset_tft(void) {
 	tft.sendCommand(ILI9341_SWRESET);
 	delay(150);
@@ -783,6 +824,7 @@ bool check_tft(void) {
 	Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
 	return true;
 }
+#endif
 
 #ifdef USE_LORA
 
@@ -839,6 +881,7 @@ bool send_lora_string(const char *string) {
 //	}
 	lora.send((uint8_t*) sendpacket2, packet_length);
 	lora.waitPacketSent();
+	number_of_uploads++;
 	return true;
 }
 
