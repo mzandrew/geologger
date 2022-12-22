@@ -497,6 +497,7 @@ void setup() {
 }
 
 void loop() {
+	static short int count = 0;
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
 	myGNSS.checkCallbacks(); // Check if any GNSS callbacks are waiting to be processed.
 	#ifdef GET_RTCM_FROM_WIFI
@@ -547,9 +548,10 @@ void loop() {
 			break; 
 	}
 	#endif
-	static short int count = 0;
-	short int length = strlen(ssid);
-	int wifi_rssi = JUNK_RSSI;
+	#ifdef USE_WIFI
+		short int length = strlen(ssid);
+		int wifi_rssi = JUNK_RSSI;
+	#endif
 	if (0==count%DIVISOR) {
 		int n = 0;
 		#ifdef USE_WIFI
