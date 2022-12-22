@@ -6,7 +6,7 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2022-12-21 by mza
+// last updated 2022-12-22 by mza
 
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
@@ -118,6 +118,8 @@ bool setup_lora(void);
 	Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 	#define TFT_WIDTH  (240)
 	#define TFT_HEIGHT (135)
+	#define CURSOR_X (0)
+	#define CURSOR_Y (4)
 #endif
 
 //#define USE_BLITTER
@@ -153,6 +155,11 @@ double lat = 44.444444;
 double lon = -77.777777;
 double ele = 1.111111;
 uint32_t horizontal_accuracy_mm = 10000;
+uint8_t diffSoln = 0;
+uint8_t numSV = 0;
+uint16_t pDOP = 9999;
+int32_t height_mm = 0;
+uint32_t vAcc_mm = 10000;
 
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> //http://librarymanager/All#SparkFun_u-blox_GNSS
 SFE_UBLOX_GNSS myGNSS;
@@ -219,19 +226,34 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	if (MAX_VALID_CARRSOLN<carrSoln) {
 		fixType = MAX_VALID_CARRSOLN;
 	}
-	Serial.print(F(" Carrier Solution: "));
+	Serial.print(" carrSoln: ");
 	Serial.print(carrSoln);
 	Serial.print(" ");
 	Serial.print(carrSolnString[carrSoln]);
-	uint32_t hAcc = ubxDataStruct->hAcc; // Print the horizontal accuracy estimate
-	Serial.print(F(" Horizontal Accuracy: "));
-	Serial.print(hAcc);
+	uint32_t hAcc_mm = ubxDataStruct->hAcc; // Print the horizontal accuracy estimate
+	Serial.print(" hAcc_mm: ");
+	Serial.print(hAcc_mm);
 	Serial.print(F(" (mm)"));
+	diffSoln = ubxDataStruct->flags.bits.diffSoln; // 1 = differential corrections were applied
+	Serial.print(" diffSoln: ");
+	Serial.print(diffSoln);
+	numSV = ubxDataStruct->numSV;  // Number of satellites used in Nav Solution
+	Serial.print(" numSV: ");
+	Serial.print(numSV);
+	pDOP = ubxDataStruct->pDOP;  // Position DOP * 0.01
+	Serial.print(" pDOP: ");
+	Serial.print(pDOP);
+	height_mm = ubxDataStruct->height; // Height above ellipsoid: mm
+	Serial.print(" height_mm: ");
+	Serial.print(height_mm);
+	vAcc_mm = ubxDataStruct->vAcc;  // Vertical accuracy estimate: mm
+	Serial.print(" vAcc_mm: ");
+	Serial.print(vAcc_mm);
 	Serial.println();
 	lat = latitude / 10000000.0;
 	lon = longitude / 10000000.0;
 	ele = altitude / 1000.0;
-	horizontal_accuracy_mm = hAcc;
+	horizontal_accuracy_mm = hAcc_mm;
 }
 
 #include <stdint.h>
@@ -348,7 +370,7 @@ uint32_t upload_to_feed_with_location(uint32_t value, float latitude, float long
 void setup() {
 	Serial.begin(115200);
 	delay(1500);
-	Serial.println(F("NTRIP testing"));
+	Serial.println(F("geologger"));
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
 	#endif
@@ -384,11 +406,12 @@ void setup() {
 		digitalWrite(TFT_BACKLITE, HIGH);
 		tft.init(TFT_HEIGHT, TFT_WIDTH); // Init ST7789 240x135
 		tft.setRotation(3);
+		tft.setCursor(CURSOR_X, CURSOR_Y);
 		tft.fillScreen(ST77XX_BLACK);
 		tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 	#endif
 	tft.setTextSize(2);
-	tft.println("tft initialized");
+	//tft.println("tft initialized");
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		Serial.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
@@ -456,30 +479,21 @@ void setup() {
 	while (Serial.available()) { // Empty the serial buffer
 		Serial.read();
 	}
-	tft.println("one");
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
 		check_tft();
 	#endif
-	//pinMode(RFM95_CS, OUTPUT);
-	//digitalWrite(RFM95_CS, HIGH);
-	//pinMode(TFT_CS, OUTPUT);
-	//digitalWrite(TFT_CS, HIGH);
 	#ifdef USE_LORA
 		setup_lora();
-		if (lora_is_available) {
-			send_lora_string("coming online");
-		}
+//		if (lora_is_available) {
+//			send_lora_string("coming online");
+//		}
 	#endif
-	//pinMode(RFM95_CS, OUTPUT);
-	//digitalWrite(RFM95_CS, HIGH);
-	//pinMode(TFT_CS, OUTPUT);
-	//digitalWrite(TFT_CS, HIGH);
-	//tft.println("two");
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
 		check_tft();
 		//reset_tft();
 		//check_tft();
 	#endif
+	delay(1000);
 }
 
 void loop() {
@@ -544,21 +558,31 @@ void loop() {
 		#ifdef USE_BLITTER
 			tft_top.fillScreen(ILI9341_BLACK);
 			tft_top.setCursor(0, 10);
-			tft_top.print("prec_mm: ");
+			tft_top.print("hAcc_mm: ");
 			tft_top.println(horizontal_accuracy_mm);
 			tft_top.print("#uploads: ");
 			tft_top.println(number_of_uploads);
-			// could add fixType here...
+			// could add fixType etc here...
 		#else
-			tft.setCursor(0, 0);
-			snprintf(line, LENGTH_OF_LINE, "prec_mm: %-*d", LENGTH_OF_LINE-9, horizontal_accuracy_mm);
+			tft.setCursor(CURSOR_X, CURSOR_Y);
+			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %-*d", LENGTH_OF_LINE, horizontal_accuracy_mm);
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "#uploads: %-*d", LENGTH_OF_LINE-10, number_of_uploads);
+			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %-*d", LENGTH_OF_LINE, vAcc_mm);
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE-9, fixTypeString[fixType].c_str());
+			snprintf(line, LENGTH_OF_LINE, "numSV: %-*d", LENGTH_OF_LINE, numSV);
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE-10, carrSolnString[carrSoln].c_str());
+			snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP);
+			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str());
+			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str());
 
+			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "diffSoln: %-*d", LENGTH_OF_LINE, diffSoln);
+			tft.println(line);
+			//snprintf(line, LENGTH_OF_LINE, "height_mm: %-*d", LENGTH_OF_LINE, height_mm);
+			//tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "#uploads: %-*d", LENGTH_OF_LINE, number_of_uploads);
 			tft.println(line);
 		#endif
 		#ifdef USE_WIFI
@@ -577,7 +601,7 @@ void loop() {
 				tft_top.print("#networks: ");
 				tft_top.println(n);
 			#else
-				snprintf(line, LENGTH_OF_LINE, "#networks: %-*d", LENGTH_OF_LINE-11, n);
+				snprintf(line, LENGTH_OF_LINE, "#networks: %-*d", LENGTH_OF_LINE, n);
 				tft.println(line);
 			#endif
 		}
@@ -842,35 +866,24 @@ bool check_tft(void) {
 #ifdef USE_LORA
 
 bool setup_lora(void) {
-//	tft.println("three");
-//	pinMode(RFM95_RST, OUTPUT);
-//	digitalWrite(RFM95_RST, HIGH);
-//	delay(100);
-//	digitalWrite(RFM95_RST, LOW);
-//	delay(10);
-//	digitalWrite(RFM95_RST, HIGH);
-//	delay(10);
-//	tft.println("four");
 	if (!lora.init()) {
 		Serial.println("LoRa radio init failed");
-		//tft.println("LoRa radio init failed");
+		tft.println("LoRa radio init failed");
 	} else {
-//		tft.println("six");
 		Serial.println("LoRa radio init OK!");
-		//tft.println("LoRa radio init OK!");
+		tft.println("LoRa radio init OK!");
 		if (!lora.setFrequency(LORA_FREQ)) {
 			Serial.println("LoRa radio set frequency failed");
-			//tft.println("LoRa radio set frequency failed");
+			tft.println("LoRa radio set frequency failed");
 		} else {
 			Serial.println("LoRa radio set frequency OK!");
-			//tft.println("LoRa radio set frequency OK!");
+			tft.println("LoRa radio set frequency OK!");
 		}
 		Serial.print("Set Freq to: "); Serial.println(LORA_FREQ);
-		//tft.print("Set Freq to: "); Serial.println(LORA_FREQ);
+		tft.print("Set Freq to: "); tft.println(LORA_FREQ);
 		lora.setTxPower(5, false); // [5,23]
 		lora_is_available = true;
 	}
-//	tft.println("five");
 	return lora_is_available;
 }
 
