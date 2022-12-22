@@ -576,7 +576,6 @@ void loop() {
 			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str());
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str());
-
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "diffSoln: %-*d", LENGTH_OF_LINE, diffSoln);
 			tft.println(line);
@@ -637,6 +636,8 @@ void loop() {
 				//delay(10);
 			}
 		}
+		#else
+			delay(100);
 		#endif
 		#ifdef USE_BLITTER
 			tft.drawLine(TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION, TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION+TFT_BOTTOM_HEIGHT-1, ILI9341_WHITE);
@@ -649,13 +650,14 @@ void loop() {
 				if (0==count%1024) {
 					if (lora_is_available) {
 						send_lora_ping();
+						delay(1000);
 						if (RSSI_THRESHOLD<lora_rssi_ping) {
 							send_lora_int(lora_rssi_ping, "lora-rssi-ping");
 						}
-						delay(2000);
-						if (RSSI_THRESHOLD<lora_rssi_pong) {
-							send_lora_int(lora_rssi_pong, "lora-rssi-pong");
-						}
+//						delay(2000);
+//						if (RSSI_THRESHOLD<lora_rssi_pong) {
+//							send_lora_int(lora_rssi_pong, "lora-rssi-pong");
+//						}
 					}
 				}
 			#endif
@@ -671,24 +673,24 @@ void loop() {
 				#endif
 				#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 					if (lora_is_available) {
-						delay(2000);
+						#ifdef DEBUG_LORA_RSSI
+							delay(2000);
+						#endif
 						send_lora_ping();
+						delay(1000);
 						if (RSSI_THRESHOLD<lora_rssi_ping) {
 							send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
 						}
-						delay(2000);
-						if (RSSI_THRESHOLD<lora_rssi_pong) {
-							send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
-						}
+//						delay(2000);
+//						if (RSSI_THRESHOLD<lora_rssi_pong) {
+//							send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
+//						}
 					}
 				#endif
 			}
 		}
 	}
 	delay(1);
-	#ifndef USE_WIFI
-		delay(8);
-	#endif
 	count++;
 }
 
