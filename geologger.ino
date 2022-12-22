@@ -17,6 +17,7 @@
 //#define POST_WIFI_RSSI_DATA_OVER_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_LORA
 #define POST_LORA_RSSI_DATA_OVER_LORA
+//#define DEBUG_LORA_RSSI
 
 #ifdef POST_WIFI_RSSI_DATA_OVER_LORA
 	#define USE_LORA
@@ -571,16 +572,18 @@ void loop() {
 			//Serial.println("done");
 		#endif
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
-			if (0==count%1024) {
-				send_lora_ping();
-				if (RSSI_THRESHOLD<lora_rssi_ping) {
-					send_lora_int(lora_rssi_ping, "lora-rssi-ping");
+			#ifdef DEBUG_LORA_RSSI
+				if (0==count%1024) {
+					send_lora_ping();
+					if (RSSI_THRESHOLD<lora_rssi_ping) {
+						send_lora_int(lora_rssi_ping, "lora-rssi-ping");
+					}
+					delay(2000);
+					if (RSSI_THRESHOLD<lora_rssi_pong) {
+						send_lora_int(lora_rssi_pong, "lora-rssi-pong");
+					}
 				}
-				delay(2000);
-				if (RSSI_THRESHOLD<lora_rssi_pong) {
-					send_lora_int(lora_rssi_pong, "lora-rssi-pong");
-				}
-			}
+			#endif
 		#endif
 		if (number_of_uploads<MAX_UPLOADS) {
 			//upload_to_feed(wifi_rssi);
