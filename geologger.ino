@@ -16,7 +16,7 @@
 //#define GET_RTCM_FROM_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_LORA
-#define POST_LORA_RSSI_DATA_OVER_LORA
+//#define POST_LORA_RSSI_DATA_OVER_LORA
 //#define DEBUG_LORA_RSSI
 
 #ifdef POST_WIFI_RSSI_DATA_OVER_LORA
@@ -567,9 +567,9 @@ void loop() {
 			// could add fixType etc here...
 		#else
 			tft.setCursor(CURSOR_X, CURSOR_Y);
-			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %-*d", LENGTH_OF_LINE, horizontal_accuracy_mm);
+			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %-*u", LENGTH_OF_LINE, horizontal_accuracy_mm);
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %-*d", LENGTH_OF_LINE, vAcc_mm);
+			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %-*u", LENGTH_OF_LINE, vAcc_mm);
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "numSV: %-*d", LENGTH_OF_LINE, numSV);
 			tft.println(line);
