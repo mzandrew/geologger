@@ -10,9 +10,11 @@
 
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
-#define DIVISOR (128)
+#define SCREEN_UPDATE_DIVISOR (512)
+#define UPLOAD_DIVISOR (SCREEN_UPDATE_DIVISOR*4)
 #define MAX_UPLOADS (100)
-#define MINIMUM_HORIZONTAL_ACCURACY_MM (300)
+#define MAX_UPLOAD_RATE_PER_MINUTE (10)
+#define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
 //#define GET_RTCM_FROM_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_LORA
@@ -160,6 +162,15 @@ uint8_t numSV = 0;
 uint16_t pDOP = 9999;
 int32_t height_mm = 0;
 uint32_t vAcc_mm = 10000;
+uint16_t year   = 70; // Year (UTC)
+uint8_t  month  = 70; // Month, range 1..12 (UTC)
+uint8_t  day    = 70; // Day of month, range 1..31 (UTC)
+uint8_t  hour   = 70; // Hour of day, range 0..23 (UTC)
+uint8_t  minute = 70; // Minute of hour, range 0..59 (UTC)
+uint8_t  second = 70; // Seconds of minute, range 0..60 (UTC)
+uint8_t current_minute = 70; // for upload counter
+uint32_t number_of_uploads_for_the_current_minute = 0;
+uint32_t total_number_of_uploads = 0;
 
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> //http://librarymanager/All#SparkFun_u-blox_GNSS
 SFE_UBLOX_GNSS myGNSS;
@@ -205,6 +216,16 @@ void pushGPGGA(NMEA_GGA_data_t *nmeaData) {
 //        |                 |              |
 
 void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
+	year = ubxDataStruct->year;
+	month = ubxDataStruct->month;
+	day = ubxDataStruct->day;
+	hour = ubxDataStruct->hour;
+	minute = ubxDataStruct->min;
+	second = ubxDataStruct->sec;
+	if (current_minute!=minute) {
+		number_of_uploads_for_the_current_minute = 0;
+		current_minute = minute;
+	}
 	double latitude = ubxDataStruct->lat; // Print the latitude
 	Serial.print(F("Lat: "));
 	Serial.print(latitude / 10000000.0, 7);
@@ -262,8 +283,6 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 
 #define AIO_SERVER     "io.adafruit.com"
 #define AIO_SERVERPORT 8883
-
-int number_of_uploads = 0;
 
 // WiFiFlientSecure for SSL/TLS support
 WiFiClientSecure client;
@@ -327,7 +346,7 @@ uint32_t upload_to_feed(uint32_t value) {
 			//feed.publish('{"value":value}'); // upload this somewhere
 			Serial.print("published value: "); Serial.println(value);
 			value = 0;
-			number_of_uploads++;
+			total_number_of_uploads++;
 		} else {
 			Serial.println("couldn't publish value! "); Serial.println(value);
 		}
@@ -359,7 +378,6 @@ uint32_t upload_to_feed_with_location(uint32_t value, float latitude, float long
 			feed.publish(csv_string);
 			Serial.print("published value: "); Serial.println(value);
 			value = 0;
-			number_of_uploads++;
 		} else {
 			Serial.println("couldn't publish value! "); Serial.println(value);
 		}
@@ -552,10 +570,9 @@ void loop() {
 		short int length = strlen(ssid);
 		int wifi_rssi = JUNK_RSSI;
 	#endif
-	if (0==count%DIVISOR) {
-		int n = 0;
+	if (0==count%SCREEN_UPDATE_DIVISOR) {
 		#ifdef USE_WIFI
-		n = WiFi.scanNetworks();
+			int n = WiFi.scanNetworks();
 		#endif
 		#ifdef USE_BLITTER
 			tft_top.fillScreen(ILI9341_BLACK);
@@ -563,7 +580,7 @@ void loop() {
 			tft_top.print("hAcc_mm: ");
 			tft_top.println(horizontal_accuracy_mm);
 			tft_top.print("#uploads: ");
-			tft_top.println(number_of_uploads);
+			tft_top.println(total_number_of_uploads);
 			// could add fixType etc here...
 		#else
 			tft.setCursor(CURSOR_X, CURSOR_Y);
@@ -583,18 +600,18 @@ void loop() {
 			tft.println(line);
 			//snprintf(line, LENGTH_OF_LINE, "height_mm: %-*d", LENGTH_OF_LINE, height_mm);
 			//tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "#uploads: %-*d", LENGTH_OF_LINE, number_of_uploads);
+			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%*s", total_number_of_uploads, number_of_uploads_for_the_current_minute, LENGTH_OF_LINE, "");
 			tft.println(line);
 		#endif
 		#ifdef USE_WIFI
-		if (n == 0) {
-					Serial.println("no networks found");
-					#ifdef USE_BLITTER
-						tft_top.println("no networks found");
-					#else
-						snprintf(line, LENGTH_OF_LINE, "%-*s", LENGTH_OF_LINE, "no networks found");
-						tft.println(line);
-					#endif
+		if (0==n) {
+			Serial.println("no networks found");
+			#ifdef USE_BLITTER
+				tft_top.println("no networks found");
+			#else
+				snprintf(line, LENGTH_OF_LINE, "%-*s", LENGTH_OF_LINE, "no networks found");
+				tft.println(line);
+			#endif
 		} else {
 			Serial.print("#networks: ");
 			Serial.println(n);
@@ -647,8 +664,17 @@ void loop() {
 			tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
 			//Serial.println("done");
 		#endif
+	}
+	if (0==count%UPLOAD_DIVISOR) {
+		bool okay_to_upload = false;
+		if (total_number_of_uploads<MAX_UPLOADS) {
+			if (number_of_uploads_for_the_current_minute<MAX_UPLOAD_RATE_PER_MINUTE) {
+				okay_to_upload = true;
+			}
+		}
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			#ifdef DEBUG_LORA_RSSI
+				total_number_of_uploads++;
 				if (0==count%1024) {
 					if (lora_is_available) {
 						send_lora_ping();
@@ -664,9 +690,11 @@ void loop() {
 				}
 			#endif
 		#endif
-		if (number_of_uploads<MAX_UPLOADS) {
+		if (okay_to_upload) {
 			//upload_to_feed(wifi_rssi);
 			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+				total_number_of_uploads++;
+				number_of_uploads_for_the_current_minute++;
 				#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
 					upload_to_feed_with_location(wifi_rssi, lat, lon, ele);
 				#endif
@@ -679,7 +707,7 @@ void loop() {
 							delay(2000);
 						#endif
 						send_lora_ping();
-						delay(1000);
+						delay(500);
 						if (RSSI_THRESHOLD<lora_rssi_ping) {
 							send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
 						}
@@ -911,7 +939,6 @@ bool send_lora_string(const char *string) {
 //	}
 	lora.send((uint8_t*) sendpacket2, packet_length);
 	lora.waitPacketSent();
-	number_of_uploads++;
 	return true;
 }
 
