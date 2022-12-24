@@ -6,7 +6,7 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2022-12-22 by mza
+// last updated 2022-12-24 by mza
 
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
@@ -16,7 +16,7 @@
 //#define GET_RTCM_FROM_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_LORA
-//#define POST_LORA_RSSI_DATA_OVER_LORA
+#define POST_LORA_RSSI_DATA_OVER_LORA
 //#define DEBUG_LORA_RSSI
 
 #ifdef POST_WIFI_RSSI_DATA_OVER_LORA
