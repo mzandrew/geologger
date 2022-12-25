@@ -6,12 +6,13 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2022-12-24 by mza
+// last updated 2022-12-25 by mza
 
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
 #define SCREEN_UPDATE_DIVISOR (512)
 #define UPLOAD_DIVISOR (SCREEN_UPDATE_DIVISOR*4)
+#define LORA_PING_PONG_DIVISOR (SCREEN_UPDATE_DIVISOR*2)
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
@@ -570,6 +571,14 @@ void loop() {
 		short int length = strlen(ssid);
 		int wifi_rssi = JUNK_RSSI;
 	#endif
+	if (0==count%LORA_PING_PONG_DIVISOR) {
+		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+		if (lora_is_available) {
+			send_lora_ping();
+			get_lora_pong();
+		}
+		#endif
+	}
 	if (0==count%SCREEN_UPDATE_DIVISOR) {
 		#ifdef USE_WIFI
 			int n = WiFi.scanNetworks();
@@ -590,8 +599,8 @@ void loop() {
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "numSV: %-*d", LENGTH_OF_LINE, numSV);
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP);
-			tft.println(line);
+			//snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP);
+			//tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str());
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str());
@@ -601,6 +610,8 @@ void loop() {
 			//snprintf(line, LENGTH_OF_LINE, "height_mm: %-*d", LENGTH_OF_LINE, height_mm);
 			//tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%*s", total_number_of_uploads, number_of_uploads_for_the_current_minute, LENGTH_OF_LINE, "");
+			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "loraRSSI: %d%*s", lora_rssi_ping, LENGTH_OF_LINE, "");
 			tft.println(line);
 		#endif
 		#ifdef USE_WIFI
@@ -673,22 +684,23 @@ void loop() {
 			}
 		}
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+		if (lora_is_available) {
 			#ifdef DEBUG_LORA_RSSI
 				total_number_of_uploads++;
 				if (0==count%1024) {
 					if (lora_is_available) {
-						send_lora_ping();
-						delay(1000);
 						if (RSSI_THRESHOLD<lora_rssi_ping) {
+							delay(500);
 							send_lora_int(lora_rssi_ping, "lora-rssi-ping");
 						}
-//						delay(2000);
 //						if (RSSI_THRESHOLD<lora_rssi_pong) {
+//							delay(2000);
 //							send_lora_int(lora_rssi_pong, "lora-rssi-pong");
 //						}
 					}
 				}
 			#endif
+		}
 		#endif
 		if (okay_to_upload) {
 			//upload_to_feed(wifi_rssi);
@@ -706,13 +718,12 @@ void loop() {
 						#ifdef DEBUG_LORA_RSSI
 							delay(2000);
 						#endif
-						send_lora_ping();
-						delay(500);
 						if (RSSI_THRESHOLD<lora_rssi_ping) {
+							delay(500);
 							send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
 						}
-//						delay(2000);
 //						if (RSSI_THRESHOLD<lora_rssi_pong) {
+//							delay(2000);
 //							send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
 //						}
 					}
@@ -974,9 +985,8 @@ int get_lora_rssi(void) {
 bool parse_lora_raw(const char *raw_message) {
 	// compare to regexp: re.search("^" + PREFIX + "node([0-9]+)\[([0-9]+)\](.*)" + SUFFIX + "$", packet_text)
 	int len = strnlen(raw_message, MAX_STRING_LENGTH);
-	Serial.print("received lora string length: ");
-	Serial.println(len);
-	Serial.println(raw_message);
+	//Serial.print("received lora string length: "); Serial.println(len);
+	//Serial.println(raw_message);
 //	int section = 0;
 	int p = strlen(PREFIX);
 	int s = strlen(SUFFIX);
@@ -990,7 +1000,8 @@ bool parse_lora_raw(const char *raw_message) {
 	for (i=0, j=0; i<p, j<p; i++, j++) {
 		if (raw_message[i]!=PREFIX[j]) {
 			Serial.print("message does not match prefix at index ");
-			Serial.println(i);
+			Serial.print(i);
+			Serial.print(",");
 			Serial.println(j);
 			return false;
 		}
@@ -998,7 +1009,8 @@ bool parse_lora_raw(const char *raw_message) {
 	for (i=len-1, j=s-1; i<=len-s, j<=0; i--, j--) {
 		if (raw_message[i]!=SUFFIX[j]) {
 			Serial.print("message does not match suffix at index ");
-			Serial.println(i);
+			Serial.print(i);
+			Serial.print(",");
 			Serial.println(j);
 			return false;
 		}
@@ -1008,7 +1020,8 @@ bool parse_lora_raw(const char *raw_message) {
 	for (i=p, j=0; i<p+string_len-1, j<string_len; i++, j++) { // i off-by-frog
 		if (raw_message[i]!=NODE[j]) {
 			Serial.print("message does not match \"node\" at index ");
-			Serial.println(i);
+			Serial.print(i);
+			Serial.print(",");
 			Serial.println(j);
 			return false;
 		}
@@ -1066,8 +1079,8 @@ next2:
 	i++;
 	strncpy(message, raw_message+i, len-s-i);
 	message[len-s-i] = 0;
-	Serial.print("remaining message: ");
-	Serial.println(message);
+	//Serial.print("remaining message: ");
+	//Serial.println(message);
 	return true;
 }
 
@@ -1082,7 +1095,8 @@ bool parse_lora_message(const char *string) {
 			Serial.print("message does not match ");
 			Serial.print(string);
 			Serial.print(" at index ");
-			Serial.println(i);
+			Serial.print(i);
+			Serial.print(",");
 			Serial.println(j);
 			return false;
 		}
@@ -1092,7 +1106,8 @@ bool parse_lora_message(const char *string) {
 	for (j=0; i<len, j<string_len; i++, j++) {
 		if (message[i]!=RSSI[j]) {
 			Serial.print("message does not match \" rssi=-\" at index ");
-			Serial.println(i);
+			Serial.print(i);
+			Serial.print(",");
 			Serial.println(j);
 			return false;
 		}
@@ -1119,12 +1134,15 @@ bool parse_lora_message(const char *string) {
 	return true;
 }
 
-#define MAX_TRIES 8
 void send_lora_ping(void) {
 	lora_rssi_ping = JUNK_RSSI;
 	lora_rssi_pong = JUNK_RSSI;
-	uint8_t len;
 	send_lora_string("ping");
+}
+
+#define MAX_TRIES 5
+void get_lora_pong(void) {
+	uint8_t len;
 	lora.waitAvailableTimeout(1000);
 	for (int i=0; i<MAX_TRIES; i++) {
 		len = MAX_STRING_LENGTH;
@@ -1133,15 +1151,25 @@ void send_lora_ping(void) {
 			recvpacket[len] = 0;
 			if (parse_lora_raw((const char *) recvpacket)) {
 				if (parse_lora_message("pong")) {
-					Serial.print("got a response: ");
+					Serial.print("response[");
+					Serial.print(i);
+					Serial.print("]: ");
 					Serial.println(message);
 					lora_rssi_pong = lora.lastRssi();
-					Serial.print("response rssi: ");
-					Serial.println(lora_rssi_pong);
+					//Serial.print("response rssi: ");
+					//Serial.println(lora_rssi_pong);
 					break;
 				}
+				Serial.print("response[");
+				Serial.print(i);
+				Serial.print("] was not pong: \"");
+				Serial.print(message);
+				Serial.println("\"");
 			}
 		}
+		delay(500);
+		send_lora_string("ping");
+		delay(500);
 	}
 }
 
