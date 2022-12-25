@@ -1143,7 +1143,7 @@ void send_lora_ping(void) {
 #define MAX_TRIES 5
 void get_lora_pong(void) {
 	uint8_t len;
-	lora.waitAvailableTimeout(1000);
+	lora.waitAvailableTimeout(500);
 	for (int i=0; i<MAX_TRIES; i++) {
 		len = MAX_STRING_LENGTH;
 		lora.recv(recvpacket, &len);
