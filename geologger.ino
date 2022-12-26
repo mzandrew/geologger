@@ -80,6 +80,12 @@ RH_RF95 lora(RFM95_CS, RFM95_INT);
 bool lora_is_available = false;
 bool setup_lora(void);
 
+//#define BUTTON1 (18) // GPIO18 = A0
+#define BUTTON1 (17) // GPIO17 = A1
+#define BUTTON2 (16) // GPIO16 = A2
+bool previous_button1 = false;
+bool previous_button2 = false;
+
 /*
 	Use ESP32 WiFi to get RTCM data from Swift Navigation's Skylark caster as a Client, and transmit GGA using a callback
 	By: SparkFun Electronics / Nathan Seidle & Paul Clark
@@ -172,11 +178,19 @@ String fixTypeString[] = { "none", "dead_reck", "2d", "3d", "gnss+dead_reck", "t
 uint8_t carrSoln = 0;
 String carrSolnString[] = { "none", "floating", "fixed", "unknown" };
 #define MAX_VALID_CARRSOLN (3)
-double lat = 44.444444;
-double lon = -77.777777;
-double ele = 1.111111;
-uint32_t hAcc_mm = 10000;
-uint32_t vAcc_mm = 10000;
+#define JUNK_LAT (44.444444)
+#define JUNK_LON (-77.777777)
+#define JUNK_ELE (1.111111)
+double lat = JUNK_LAT;
+double lon = JUNK_LON;
+double ele = JUNK_ELE;
+double lora_lat = JUNK_LAT;
+double lora_lon = JUNK_LON;
+double lora_ele = JUNK_ELE;
+#define JUNK_ACC_MM (10000)
+uint32_t lora_hAcc_mm = JUNK_ACC_MM;
+uint32_t hAcc_mm = JUNK_ACC_MM;
+uint32_t vAcc_mm = JUNK_ACC_MM;
 uint8_t diffSoln = 0;
 uint8_t numSV = 0;
 uint16_t pDOP = 9999;
@@ -445,6 +459,8 @@ void setup() {
 	delay(1500);
 	Serial.println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
 	Serial.println("geologger");
+	Serial.print("startTime: ");
+	Serial.println(startTime);
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
 	#endif
@@ -532,6 +548,7 @@ void setup() {
 		Serial.println(F("Connecting to WiFi..."));
 		tft.println(F("Connecting to WiFi..."));
 		unsigned long startTime = millis();
+		unsigned long startTime = millis();
 		WiFi.begin(ssid, password);
 		while ((WiFi.status() != WL_CONNECTED) && (millis() < (startTime + 10000))) { // Timeout after 10 seconds
 			delay(500);
@@ -573,10 +590,40 @@ void setup() {
 			flush_lora();
 		}
 	#endif
+	pinMode(BUTTON1, INPUT_PULLDOWN);
+	pinMode(BUTTON2, INPUT_PULLDOWN);
+	previous_button1 = digitalRead(BUTTON1);
+	previous_button2 = digitalRead(BUTTON2);
+	pingPongTime = millis();
+	screenUpdateTime = millis();
+	uploadTime = millis();
 }
 
+bool should_do_a_lora_pingpong = false;
+bool should_do_an_upload = false;
 void loop() {
 	currentTime = millis();
+	//Serial.print("currentTime: ");
+	//Serial.println(currentTime);
+	bool button1 = digitalRead(BUTTON1);
+	bool button2 = digitalRead(BUTTON2);
+	bool button1_was_just_pressed = false;
+	bool button2_was_just_pressed = false;
+	if (previous_button1!=button1) {
+		button1_was_just_pressed = true;
+		previous_button1 = button1;
+		Serial.println("button1 was just pressed");
+	}
+	if (previous_button2!=button2) {
+		button2_was_just_pressed = true;
+		previous_button2 = button2;
+		Serial.println("button2 was just pressed");
+	}
+	if (button2_was_just_pressed) {
+		should_do_a_lora_pingpong = true;
+	}
+	if (button1_was_just_pressed) {
+	}
 	static short int count = 0;
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
 	myGNSS.checkCallbacks(); // Check if any GNSS callbacks are waiting to be processed.
@@ -634,183 +681,185 @@ void loop() {
 	#endif
 	#ifdef USE_LORA
 		if (lora_is_available) {
-			flush_lora();
+//			flush_lora(); // this makes it less stable
 		}
 	#endif
-	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime) {
+	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime && should_do_a_lora_pingpong) {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			if (lora_is_available) {
 				if (900<currentTime-screenUpdateTime) {
 					send_lora_ping();
 					get_lora_pong();
 					pingPongTime = millis();
+					should_do_a_lora_pingpong = false;
+					if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+						should_do_an_upload = true;
+					}
 				}
 			}
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
 		if (900<currentTime-pingPongTime) {
-		screenUpdateTime = millis();
-		debug("start of screen update");
-		#ifdef USE_WIFI
-			int n = WiFi.scanNetworks();
-		#endif
-		#ifdef USE_BLITTER
-			tft_top.fillScreen(ILI9341_BLACK);
-			tft_top.setCursor(0, 10);
-			tft_top.print("hAcc_mm: ");
-			tft_top.println(hAcc_mm);
-			tft_top.print("#uploads: ");
-			tft_top.println(total_number_of_uploads);
-			// could add fixType etc here...
-		#else
-			//snprintf(line, LENGTH_OF_LINE, "uptime: %d%s", (millis()-startTime)/1000, blanks); tft.println(line); delay(300); // gets to 500 with 250 ms delay
-			snprintf(line[0], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
-			Serial.println(line[0]);
-//			String asdf = "                    ";
-//			for (int k=0; k<8; k++) {
-//				tft.println(blanks);
-//				tft.println(asdf);
-//				delay(250); // gets to 400 with 250ms delay
-//			}
-			snprintf(line[0], LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); //tft.println(line[0]);
-			snprintf(line[1], LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); //tft.println(line[1]);
-			snprintf(line[2], LENGTH_OF_LINE, "numSV: %d%s", numSV, blanks); //tft.println(line[2]);
-			//snprintf(line[], LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
-			snprintf(line[3], LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
-			snprintf(line[4], LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
-			snprintf(line[5], LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); //tft.println(line[5]);
-			//snprintf(line[], LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line[]);
-			snprintf(line[6], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[6]);
-			snprintf(line[7], LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line[7]);
-			debug("middle of screen update");
-			int k = 0;
-			for (int l=0; l<NUMBER_OF_LINES; l++) {
-				for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
-					paragraph[k] = line[l][j];
+			screenUpdateTime = millis();
+			//debug("start of screen update");
+			#ifdef USE_WIFI
+				int n = WiFi.scanNetworks();
+			#endif
+			#ifdef USE_BLITTER
+				tft_top.fillScreen(ILI9341_BLACK);
+				tft_top.setCursor(0, 10);
+				tft_top.print("hAcc_mm: ");
+				tft_top.println(hAcc_mm);
+				tft_top.print("#uploads: ");
+				tft_top.println(total_number_of_uploads);
+				// could add fixType etc here...
+			#else
+				snprintf(line[0], LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); //tft.println(line[0]);
+				snprintf(line[1], LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); //tft.println(line[1]);
+				snprintf(line[2], LENGTH_OF_LINE, "numSV: %d %c%s", numSV, diffSoln?'d':' ', blanks); //tft.println(line[2]);
+				//snprintf(line[5], LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); //tft.println(line[5]);
+				//snprintf(line[], LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
+				snprintf(line[3], LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
+				snprintf(line[4], LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
+				//snprintf(line[], LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line[]);
+				snprintf(line[5], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[5]);
+				snprintf(line[6], LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line[6]);
+				snprintf(line[7], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
+				Serial.println(line[7]);
+				//debug("middle of screen update");
+				int k = 0;
+				for (int l=0; l<NUMBER_OF_LINES; l++) {
+					for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
+						paragraph[k] = line[l][j];
+					}
 				}
-			}
-			paragraph[k] = 0;
-			//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
-			tft.setCursor(CURSOR_X, CURSOR_Y);
-			tft.println(paragraph);
-			debug("almost done with screen update");
-		#endif
-		#ifdef USE_WIFI
-		const unsigned offset = 8; // this is where the bug is
-		if (0==n) {
-			Serial.println("no networks found");
-			#ifdef USE_BLITTER
-				tft_top.println("no networks found");
-			#else
-				snprintf(line[offset], LENGTH_OF_LINE, "%-*s", LENGTH_OF_LINE, "no networks found");
-				tft.println(line[offset]);
+				paragraph[k] = 0;
+				//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
+				tft.setCursor(CURSOR_X, CURSOR_Y);
+				tft.println(paragraph);
+				//debug("almost done with screen update");
 			#endif
-		} else {
-			Serial.print("#networks: ");
-			Serial.println(n);
-			#ifdef USE_BLITTER
-				tft_top.print("#networks: ");
-				tft_top.println(n);
-			#else
-				snprintf(line[offset], LENGTH_OF_LINE, "#networks: %-*d", LENGTH_OF_LINE, n);
-				tft.println(line[offset]);
-			#endif
-		}
-		#endif
-		#ifdef USE_BLITTER
-			tft.drawLine(TFT_WIDTH-1, TFT_TOP_Y_POSITION, TFT_WIDTH-1, TFT_TOP_Y_POSITION+TFT_TOP_HEIGHT-1, ILI9341_WHITE);
-			//Serial.println("starting to copy top");
-			tft.drawBitmap(TFT_TOP_X_POSITION, TFT_TOP_Y_POSITION, tft_top.getBuffer(), TFT_TOP_WIDTH, TFT_TOP_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); // takes about 2 seconds
-			//Serial.println("done");
-			tft_bottom.fillScreen(ILI9341_BLACK);
-			tft_bottom.setCursor(0, 10);
-		#endif
-		#ifdef USE_WIFI
-		if (n != 0) {
-			for (int i = 0; i < n; ++i) {
-				Serial.print(WiFi.RSSI(i));
-				Serial.print(" ");
-				Serial.println(WiFi.SSID(i));
+			#ifdef USE_WIFI
+			const unsigned offset = 8; // this is where the bug is
+			if (0==n) {
+				Serial.println("no networks found");
 				#ifdef USE_BLITTER
-					tft_bottom.print(WiFi.RSSI(i));
-					tft_bottom.print(" ");
-					tft_bottom.println(WiFi.SSID(i));
+					tft_top.println("no networks found");
 				#else
-					snprintf(line[offset+i], LENGTH_OF_LINE, "%3d %-*s", WiFi.RSSI(i), LENGTH_OF_SSID, WiFi.SSID(i).c_str());
-					tft.println(line[offset+i]);
+					snprintf(line[offset], LENGTH_OF_LINE, "%-*s", LENGTH_OF_LINE, "no networks found");
+					tft.println(line[offset]);
 				#endif
-				if (strncmp(WiFi.SSID(i).c_str(), ssid, length)) {
-					//Serial.println("match!");
-					if (wifi_rssi<WiFi.RSSI(i)) {
-						wifi_rssi = WiFi.RSSI(i);
+			} else {
+				Serial.print("#networks: ");
+				Serial.println(n);
+				#ifdef USE_BLITTER
+					tft_top.print("#networks: ");
+					tft_top.println(n);
+				#else
+					snprintf(line[offset], LENGTH_OF_LINE, "#networks: %-*d", LENGTH_OF_LINE, n);
+					tft.println(line[offset]);
+				#endif
+			}
+			#endif
+			#ifdef USE_BLITTER
+				tft.drawLine(TFT_WIDTH-1, TFT_TOP_Y_POSITION, TFT_WIDTH-1, TFT_TOP_Y_POSITION+TFT_TOP_HEIGHT-1, ILI9341_WHITE);
+				//Serial.println("starting to copy top");
+				tft.drawBitmap(TFT_TOP_X_POSITION, TFT_TOP_Y_POSITION, tft_top.getBuffer(), TFT_TOP_WIDTH, TFT_TOP_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); // takes about 2 seconds
+				//Serial.println("done");
+				tft_bottom.fillScreen(ILI9341_BLACK);
+				tft_bottom.setCursor(0, 10);
+			#endif
+			#ifdef USE_WIFI
+			if (n != 0) {
+				for (int i = 0; i < n; ++i) {
+					Serial.print(WiFi.RSSI(i));
+					Serial.print(" ");
+					Serial.println(WiFi.SSID(i));
+					#ifdef USE_BLITTER
+						tft_bottom.print(WiFi.RSSI(i));
+						tft_bottom.print(" ");
+						tft_bottom.println(WiFi.SSID(i));
+					#else
+						snprintf(line[offset+i], LENGTH_OF_LINE, "%3d %-*s", WiFi.RSSI(i), LENGTH_OF_SSID, WiFi.SSID(i).c_str());
+						tft.println(line[offset+i]);
+					#endif
+					if (strncmp(WiFi.SSID(i).c_str(), ssid, length)) {
+						//Serial.println("match!");
+						if (wifi_rssi<WiFi.RSSI(i)) {
+							wifi_rssi = WiFi.RSSI(i);
+						}
 					}
 				}
 			}
-		}
-//		#else
-//			delay(100);
-		#endif
-		#ifdef USE_BLITTER
-			tft.drawLine(TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION, TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION+TFT_BOTTOM_HEIGHT-1, ILI9341_WHITE);
-			//Serial.println("starting to copy bottom");
-			tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
-			//Serial.println("done");
-		#endif
-		debug("end of screen update");
+//			#else
+//				delay(100);
+			#endif
+			#ifdef USE_BLITTER
+				tft.drawLine(TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION, TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION+TFT_BOTTOM_HEIGHT-1, ILI9341_WHITE);
+				//Serial.println("starting to copy bottom");
+				tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
+				//Serial.println("done");
+			#endif
+			//debug("end of screen update");
 		}
 	} else if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
-		uploadTime = millis();
-		//debug("start of upload");
-		bool okay_to_upload = false;
-		if (total_number_of_uploads<MAX_UPLOADS) {
-			if (number_of_uploads_for_the_current_minute<MAX_UPLOAD_RATE_PER_MINUTE) {
-				okay_to_upload = true;
-			}
-		}
-		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
-		if (lora_is_available) {
-			#ifdef DEBUG_LORA_RSSI
-				total_number_of_uploads++;
-				if (0==count%1024) {
-					if (lora_is_available) {
-						if (RSSI_THRESHOLD<lora_rssi_ping) {
-							delay(500);
-							send_lora_int(lora_rssi_ping, "lora-rssi-ping");
-						}
-//						if (RSSI_THRESHOLD<lora_rssi_pong) {
-//							delay(2000);
-//							send_lora_int(lora_rssi_pong, "lora-rssi-pong");
-//						}
-					}
+		if (should_do_an_upload) {
+			//debug("start of upload");
+			bool okay_to_upload = false;
+			if (total_number_of_uploads<MAX_UPLOADS) {
+				if (number_of_uploads_for_the_current_minute<MAX_UPLOAD_RATE_PER_MINUTE) {
+					okay_to_upload = true;
 				}
-			#endif
-		}
-		#endif
-		if (okay_to_upload) {
-			//upload_to_feed(wifi_rssi);
-			if (hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
-				//debug("middle of upload");
-				total_number_of_uploads++;
-				number_of_uploads_for_the_current_minute++;
-				#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
-					upload_to_feed_with_location(wifi_rssi, lat, lon, ele);
-				#endif
-				#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
-					send_lora_int_with_location(wifi_rssi, lat, lon, ele, "wifi-rssi");
-				#endif
-				#ifdef POST_LORA_RSSI_DATA_OVER_LORA
-					if (lora_is_available) {
-						#ifdef DEBUG_LORA_RSSI
-							delay(2000);
-						#endif
-						if (RSSI_THRESHOLD<lora_rssi_ping) {
-							delay(500);
-							send_lora_int_with_location(lora_rssi_ping, lat, lon, ele, "lora-rssi-ping");
+			}
+			#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+			if (lora_is_available) {
+				#ifdef DEBUG_LORA_RSSI
+					total_number_of_uploads++;
+					if (0==count%1024) {
+						if (lora_is_available) {
+							if (RSSI_THRESHOLD<lora_rssi_ping) {
+								delay(500);
+								send_lora_int(lora_rssi_ping, "lora-rssi-ping");
+							}
+//							if (RSSI_THRESHOLD<lora_rssi_pong) {
+//								delay(2000);
+//								send_lora_int(lora_rssi_pong, "lora-rssi-pong");
+//							}
 						}
-//						if (RSSI_THRESHOLD<lora_rssi_pong) {
-//							delay(2000);
-//							send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
-//						}
+					}
+				#endif
+			}
+			#endif
+			if (okay_to_upload) {
+				//upload_to_feed(wifi_rssi);
+				if (hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+					//debug("middle of upload");
+					total_number_of_uploads++;
+					number_of_uploads_for_the_current_minute++;
+					#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
+						upload_to_feed_with_location(wifi_rssi, lat, lon, ele);
+					#endif
+					#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
+							send_lora_int_with_location(wifi_rssi, lat, lon, ele, "wifi-rssi");
+					#endif
+				}
+				#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+					if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+						if (lora_is_available) {
+							#ifdef DEBUG_LORA_RSSI
+								delay(2000);
+							#endif
+							if (RSSI_THRESHOLD<lora_rssi_ping) {
+								//delay(500);
+								uploadTime = millis();
+								send_lora_int_with_location(lora_rssi_ping, lora_lat, lora_lon, lora_ele, "lora-rssi-ping");
+								should_do_an_upload = false;
+							}
+//							if (RSSI_THRESHOLD<lora_rssi_pong) {
+//								delay(2000);
+//								send_lora_int_with_location(lora_rssi_pong, lat, lon, ele, "lora-rssi-pong");
+//							}
+						}
 					}
 				#endif
 			}
@@ -1033,11 +1082,11 @@ bool send_lora_string(const char *string) {
 //	if (MAX_STRING_LENGTH<packet_length) {
 //		packet_length = MAX_STRING_LENGTH;
 //	}
-	debug("send_lora_string(waitPacketSent)");
+	//debug("send_lora_string(waitPacketSent)");
 	lora.waitPacketSent(); // wait for the previous thing to finish sending
-	debug("send_lora_string(send)");
+	//debug("send_lora_string(send)");
 	lora.send((uint8_t*) sendpacket2, packet_length); // returns immediately, but message takes another 70 ms to get sent
-	debug("send_lora_string(return)");
+	//debug("send_lora_string(return)");
 	return true;
 }
 
@@ -1222,6 +1271,10 @@ bool parse_lora_message(const char *string) {
 	strncpy(numeric_string, message+index_a, index_b-index_a);
 	numeric_string[index_b-index_a] = 0;
 	lora_rssi_ping = -atoi(numeric_string);
+	lora_hAcc_mm = hAcc_mm;
+	lora_lat = lat;
+	lora_lon = lon;
+	lora_ele = ele;
 	//debug("parse_lora_message(return)");
 	return true;
 }
@@ -1229,6 +1282,10 @@ bool parse_lora_message(const char *string) {
 void send_lora_ping(void) {
 	lora_rssi_ping = JUNK_RSSI;
 	lora_rssi_pong = JUNK_RSSI;
+	lora_hAcc_mm = JUNK_ACC_MM;
+	lora_lat = JUNK_LAT;
+	lora_lon = JUNK_LON;
+	lora_ele = JUNK_ELE;
 	send_lora_string("ping");
 }
 
@@ -1247,14 +1304,14 @@ void flush_lora(void) {
 }
 
 void get_lora_pong(void) {
-	debug("get_lora_pong()");
+	//debug("get_lora_pong()");
 	lora.waitPacketSent(); // wait for the previous thing to finish sending
-	debug("get_lora_pong(waitPacketSent)");
+	//debug("get_lora_pong(waitPacketSent)");
 	if (lora.waitAvailableTimeout(500)) { // only waits the full time if there's nothing
-		debug("get_lora_pong(waitAvailableTimeout())");
+		//debug("get_lora_pong(waitAvailableTimeout())");
 		uint8_t len = MAX_STRING_LENGTH;
 		lora.recv(recvpacket, &len);
-		debug("get_lora_pong(recv)");
+		//debug("get_lora_pong(recv)");
 		if (0<len) {
 			recvpacket[len] = 0;
 			if (parse_lora_raw((const char *) recvpacket)) {
