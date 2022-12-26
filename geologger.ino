@@ -643,16 +643,16 @@ void loop() {
 			// could add fixType etc here...
 		#else
 			tft.setCursor(CURSOR_X, CURSOR_Y);
-			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "numSV: %d%s", numSV, blanks); tft.println(line);
-			//snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); tft.println(line);
-			//snprintf(line, LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); //tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); //tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "numSV: %d%s", numSV, blanks); //tft.println(line);
+			//snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); //tft.println(line);
+			//snprintf(line, LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line);
 			debug("middle of screen update");
 		#endif
 		#ifdef USE_WIFI
