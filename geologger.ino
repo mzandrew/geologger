@@ -6,9 +6,8 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2022-12-25 by mza
+// last updated 2022-12-26 by mza
 
-#define MAX_PONG_TRIES 2
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
@@ -48,6 +47,13 @@ unsigned long pingPongTime = 0;
 unsigned long screenUpdateTime = 0;
 unsigned long screenUpdateMiniTime = 0;
 unsigned long uploadTime = 0;
+
+#define NODEID (4)
+#define MAX_STRING_LENGTH (255) // uint8_t RH_RF95::maxMessageLength()
+const char PREFIX[]="SCOOPY";
+const char SUFFIX[]="BOOPS";
+uint8_t recvpacket[MAX_STRING_LENGTH];
+char message[MAX_STRING_LENGTH];
 
 #include <SPI.h>
 #include <RH_RF95.h>
@@ -562,6 +568,11 @@ void setup() {
 		//check_tft();
 	#endif
 	//delay(1000);
+	#ifdef USE_LORA
+		if (lora_is_available) {
+			flush_lora();
+		}
+	#endif
 }
 
 void loop() {
@@ -621,14 +632,19 @@ void loop() {
 		short int length = strlen(ssid);
 		int wifi_rssi = JUNK_RSSI;
 	#endif
+	#ifdef USE_LORA
+		if (lora_is_available) {
+			flush_lora();
+		}
+	#endif
 	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime) {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			if (lora_is_available) {
-				if (900<currentTime-screenUpdateTime) {
-					pingPongTime = millis();
+//				if (900<currentTime-screenUpdateTime) {
 					send_lora_ping();
-//					get_lora_pong();
-				}
+					get_lora_pong();
+					pingPongTime = millis();
+//				}
 			}
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
@@ -1000,12 +1016,11 @@ bool setup_lora(void) {
 	return lora_is_available;
 }
 
-#define NODEID (4)
-#define MAX_STRING_LENGTH (255) // uint8_t RH_RF95::maxMessageLength()
-const char PREFIX[]="SCOOPY";
-const char SUFFIX[]="BOOPS";
-uint8_t recvpacket[MAX_STRING_LENGTH];
-char message[MAX_STRING_LENGTH];
+//void lora_waitPacketSent(void) {
+//	//debug("lora_waitPacketSent()");
+//	lora.waitPacketSent(); // takes about 70 ms
+//	//debug("lora_waitPacketSent(return)");
+//}
 
 bool send_lora_string(const char *string) {
 	static unsigned messageid = 1;
@@ -1018,8 +1033,11 @@ bool send_lora_string(const char *string) {
 //	if (MAX_STRING_LENGTH<packet_length) {
 //		packet_length = MAX_STRING_LENGTH;
 //	}
-	lora.send((uint8_t*) sendpacket2, packet_length);
-	lora.waitPacketSent();
+	debug("send_lora_string(waitPacketSent)");
+	lora.waitPacketSent(); // wait for the previous thing to finish sending
+	debug("send_lora_string(send)");
+	lora.send((uint8_t*) sendpacket2, packet_length); // returns immediately, but message takes another 70 ms to get sent
+	debug("send_lora_string(return)");
 	return true;
 }
 
@@ -1214,36 +1232,49 @@ void send_lora_ping(void) {
 	send_lora_string("ping");
 }
 
-void get_lora_pong(void) {
-	//debug("get_lora_pong()");
-	uint8_t len;
-	lora.waitAvailableTimeout(500);
-	for (int i=0; i<MAX_PONG_TRIES; i++) {
-		len = MAX_STRING_LENGTH;
+void flush_lora(void) {
+	if (lora.waitAvailableTimeout(1)) {
+		Serial.print("some data is pending in the lora buffer: ");
+		uint8_t len = MAX_STRING_LENGTH;
 		lora.recv(recvpacket, &len);
+		Serial.print(len);
+		Serial.print(" bytes ");
+		recvpacket[len] = 0;
+		Serial.println((const char *) recvpacket);
+	} else {
+		//Serial.println("no data is pending in the lora buffer");
+	}
+}
+
+void get_lora_pong(void) {
+	debug("get_lora_pong()");
+	lora.waitPacketSent(); // wait for the previous thing to finish sending
+	debug("get_lora_pong(waitPacketSent)");
+	if (lora.waitAvailableTimeout(500)) { // only waits the full time if there's nothing
+		debug("get_lora_pong(waitAvailableTimeout())");
+		uint8_t len = MAX_STRING_LENGTH;
+		lora.recv(recvpacket, &len);
+		debug("get_lora_pong(recv)");
 		if (0<len) {
 			recvpacket[len] = 0;
 			if (parse_lora_raw((const char *) recvpacket)) {
 				if (parse_lora_message("pong")) {
-					Serial.print("response[");
-					Serial.print(i);
-					Serial.print("]: ");
+					Serial.print("response: ");
 					Serial.println(message);
 					lora_rssi_pong = lora.lastRssi();
 					//Serial.print("response rssi: ");
 					//Serial.println(lora_rssi_pong);
-					break;
+				} else {
+					Serial.print("response was not pong: \"");
+					Serial.print(message);
+					Serial.println("\"");
 				}
-				Serial.print("response[");
-				Serial.print(i);
-				Serial.print("] was not pong: \"");
-				Serial.print(message);
-				Serial.println("\"");
 			}
+		} else {
+			Serial.println("received packet was length 0");
 		}
-		delay(500);
-		send_lora_string("ping");
-		delay(500);
+	} else {
+		Serial.println("did not receive a response");
 	}
 	//debug("get_lora_pong(return)");
 }
