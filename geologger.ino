@@ -12,9 +12,8 @@
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
-#define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1000)
-#define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (500)
-#define SCREEN_UPDATE_MINI_TIMEOUT_IN_MILLISECONDS (305)
+#define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1201)
+#define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (1000)
 #define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
@@ -563,10 +562,8 @@ void setup() {
 		//check_tft();
 	#endif
 	//delay(1000);
-	tft.setCursor(CURSOR_X, CURSOR_Y);
 }
 
-unsigned l = 0;
 void loop() {
 	currentTime = millis();
 	static short int count = 0;
@@ -628,12 +625,11 @@ void loop() {
 		pingPongTime = millis();
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 		if (lora_is_available) {
-			send_lora_ping();
-			get_lora_pong();
+//			send_lora_ping();
+//			get_lora_pong();
 		}
 		#endif
-	}
-	if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
+	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
 		screenUpdateTime = millis();
 		debug("start of screen update");
 		#ifdef USE_WIFI
@@ -650,7 +646,6 @@ void loop() {
 		#else
 			//snprintf(line, LENGTH_OF_LINE, "uptime: %d%s", (millis()-startTime)/1000, blanks); tft.println(line); delay(300); // gets to 500 with 250 ms delay
 			snprintf(line[0], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
-//			while (tft.dmaBusy()) { Serial.println("waiting for tft"); delay(10); } // this didn't fix anything
 			Serial.println(line[0]);
 //			String asdf = "                    ";
 //			for (int k=0; k<8; k++) {
@@ -669,9 +664,20 @@ void loop() {
 			snprintf(line[6], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[6]);
 			snprintf(line[7], LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line[7]);
 			debug("middle of screen update");
+			int k = 0;
+			for (int l=0; l<NUMBER_OF_LINES; l++) {
+				for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
+					paragraph[k] = line[l][j];
+				}
+			}
+			paragraph[k] = 0;
+			//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
+			tft.setCursor(CURSOR_X, CURSOR_Y);
+			tft.println(paragraph);
+			debug("almost done with screen update");
 		#endif
 		#ifdef USE_WIFI
-		const unsigned offset = 8;
+		const unsigned offset = 8; // this is where the bug is
 		if (0==n) {
 			Serial.println("no networks found");
 			#ifdef USE_BLITTER
@@ -720,7 +726,6 @@ void loop() {
 						wifi_rssi = WiFi.RSSI(i);
 					}
 				}
-				//delay(10);
 			}
 		}
 		#else
@@ -733,21 +738,7 @@ void loop() {
 			//Serial.println("done");
 		#endif
 		debug("end of screen update");
-	}
-	if (SCREEN_UPDATE_MINI_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateMiniTime) {
-		screenUpdateMiniTime = millis();
-		debug("end of screen mini update");
-		//tft.println(line[l]);
-		//delay(300);
-		if (l<NUMBER_OF_LINES-1) {
-			l++;
-		} else {
-			l = 0;
-			tft.setCursor(CURSOR_X, CURSOR_Y);
-		}
-		debug("end of screen mini update");
-	}
-	if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
+	} else if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
 		uploadTime = millis();
 		//debug("start of upload");
 		bool okay_to_upload = false;
