@@ -622,14 +622,17 @@ void loop() {
 		int wifi_rssi = JUNK_RSSI;
 	#endif
 	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime) {
-		pingPongTime = millis();
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
-		if (lora_is_available) {
-//			send_lora_ping();
-//			get_lora_pong();
-		}
+			if (lora_is_available) {
+				if (900<currentTime-screenUpdateTime) {
+					pingPongTime = millis();
+					send_lora_ping();
+//					get_lora_pong();
+				}
+			}
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
+		if (900<currentTime-pingPongTime) {
 		screenUpdateTime = millis();
 		debug("start of screen update");
 		#ifdef USE_WIFI
@@ -728,8 +731,8 @@ void loop() {
 				}
 			}
 		}
-		#else
-			delay(100);
+//		#else
+//			delay(100);
 		#endif
 		#ifdef USE_BLITTER
 			tft.drawLine(TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION, TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION+TFT_BOTTOM_HEIGHT-1, ILI9341_WHITE);
@@ -738,6 +741,7 @@ void loop() {
 			//Serial.println("done");
 		#endif
 		debug("end of screen update");
+		}
 	} else if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
 		uploadTime = millis();
 		//debug("start of upload");
