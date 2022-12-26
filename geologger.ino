@@ -9,7 +9,7 @@
 // last updated 2022-12-25 by mza
 
 #define MAX_PONG_TRIES 2
-uint8_t verbosity = 4; // debug=4; info=3; warning=2; error=1
+uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
 #define SCREEN_UPDATE_DIVISOR (512)
@@ -388,6 +388,13 @@ uint32_t upload_to_feed_with_location(uint32_t value, float latitude, float long
 		}
 	}
 	return value;
+}
+
+void debug2(const char *message) {
+	if (5<=verbosity) {
+		Serial.print("DEBUG2: ");
+		Serial.println(message);
+	}
 }
 
 void debug(const char *message) {
