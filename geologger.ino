@@ -12,9 +12,9 @@
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
-#define SCREEN_UPDATE_DIVISOR (512)
-#define UPLOAD_DIVISOR (SCREEN_UPDATE_DIVISOR*4)
-#define LORA_PING_PONG_DIVISOR (SCREEN_UPDATE_DIVISOR*2)
+#define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1000)
+#define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (500)
+#define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
@@ -41,6 +41,12 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 	int lora_rssi_ping = JUNK_RSSI;
 	int lora_rssi_pong = JUNK_RSSI;
 #endif
+
+unsigned long startTime = 0;
+unsigned long currentTime = 0;
+unsigned long pingPongTime = 0;
+unsigned long screenUpdateTime = 0;
+unsigned long uploadTime = 0;
 
 #include <SPI.h>
 #include <RH_RF95.h>
@@ -143,7 +149,8 @@ bool setup_lora(void);
 #else
 	#define LENGTH_OF_LINE (21)
 	#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
-	char line[LENGTH_OF_LINE+1] = "";
+	char line[LENGTH_OF_LINE] = "";
+	const char blanks[LENGTH_OF_LINE] = "                    ";
 #endif
 
 //#include "AdafruitIO_WiFi.h"
@@ -159,12 +166,12 @@ String carrSolnString[] = { "none", "floating", "fixed", "unknown" };
 double lat = 44.444444;
 double lon = -77.777777;
 double ele = 1.111111;
-uint32_t horizontal_accuracy_mm = 10000;
+uint32_t hAcc_mm = 10000;
+uint32_t vAcc_mm = 10000;
 uint8_t diffSoln = 0;
 uint8_t numSV = 0;
 uint16_t pDOP = 9999;
 int32_t height_mm = 0;
-uint32_t vAcc_mm = 10000;
 uint16_t year   = 70; // Year (UTC)
 uint8_t  month  = 70; // Month, range 1..12 (UTC)
 uint8_t  day    = 70; // Day of month, range 1..31 (UTC)
@@ -219,7 +226,7 @@ void pushGPGGA(NMEA_GGA_data_t *nmeaData) {
 //        |                 |              |
 
 void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
-	debug("printPVTdata()");
+	//debug("printPVTdata()");
 	year = ubxDataStruct->year;
 	month = ubxDataStruct->month;
 	day = ubxDataStruct->day;
@@ -255,7 +262,7 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	Serial.print(carrSoln);
 	Serial.print(" ");
 	Serial.print(carrSolnString[carrSoln]);
-	uint32_t hAcc_mm = ubxDataStruct->hAcc; // Print the horizontal accuracy estimate
+	hAcc_mm = ubxDataStruct->hAcc; // Print the horizontal accuracy estimate
 	Serial.print(" hAcc_mm: ");
 	Serial.print(hAcc_mm);
 	Serial.print(F(" (mm)"));
@@ -278,8 +285,7 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	lat = latitude / 10000000.0;
 	lon = longitude / 10000000.0;
 	ele = altitude / 1000.0;
-	horizontal_accuracy_mm = hAcc_mm;
-	debug("printPVTdata(return)");
+	//debug("printPVTdata(return)");
 }
 
 #include <stdint.h>
@@ -425,6 +431,7 @@ void error(const char *message) {
 }
 
 void setup() {
+	startTime = millis();
 	Serial.begin(115200);
 	delay(1500);
 	Serial.println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
@@ -555,6 +562,7 @@ void setup() {
 }
 
 void loop() {
+	currentTime = millis();
 	static short int count = 0;
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
 	myGNSS.checkCallbacks(); // Check if any GNSS callbacks are waiting to be processed.
@@ -610,7 +618,8 @@ void loop() {
 		short int length = strlen(ssid);
 		int wifi_rssi = JUNK_RSSI;
 	#endif
-	if (0==count%LORA_PING_PONG_DIVISOR) {
+	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime) {
+		pingPongTime = millis();
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 		if (lora_is_available) {
 			send_lora_ping();
@@ -618,7 +627,8 @@ void loop() {
 		}
 		#endif
 	}
-	if (0==count%SCREEN_UPDATE_DIVISOR) {
+	if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
+		screenUpdateTime = millis();
 		debug("start of screen update");
 		#ifdef USE_WIFI
 			int n = WiFi.scanNetworks();
@@ -627,40 +637,22 @@ void loop() {
 			tft_top.fillScreen(ILI9341_BLACK);
 			tft_top.setCursor(0, 10);
 			tft_top.print("hAcc_mm: ");
-			tft_top.println(horizontal_accuracy_mm);
+			tft_top.println(hAcc_mm);
 			tft_top.print("#uploads: ");
 			tft_top.println(total_number_of_uploads);
 			// could add fixType etc here...
 		#else
 			tft.setCursor(CURSOR_X, CURSOR_Y);
-			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %u%*s", horizontal_accuracy_mm, LENGTH_OF_LINE, "");
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %u%*s", vAcc_mm, LENGTH_OF_LINE, "");
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "numSV: %d%*s", numSV, LENGTH_OF_LINE, "");
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
-			//snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP);
-			//tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str());
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str());
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "diffSoln: %d%*s", diffSoln, LENGTH_OF_LINE, "");
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
-			//snprintf(line, LENGTH_OF_LINE, "height_mm: %-*d", LENGTH_OF_LINE, height_mm);
-			//tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%*s", total_number_of_uploads, number_of_uploads_for_the_current_minute, LENGTH_OF_LINE, "");
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "loraRSSI: %d%*s", lora_rssi_ping, LENGTH_OF_LINE, "");
-			Serial.println(strnlen(line, LENGTH_OF_LINE));
-			tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "numSV: %d%s", numSV, blanks); tft.println(line);
+			//snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); tft.println(line);
+			//snprintf(line, LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); tft.println(line);
+			snprintf(line, LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); tft.println(line);
 			debug("middle of screen update");
 		#endif
 		#ifdef USE_WIFI
@@ -726,8 +718,9 @@ void loop() {
 		#endif
 		debug("end of screen update");
 	}
-	if (0==count%UPLOAD_DIVISOR) {
-		debug("start of upload");
+	if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
+		uploadTime = millis();
+		//debug("start of upload");
 		bool okay_to_upload = false;
 		if (total_number_of_uploads<MAX_UPLOADS) {
 			if (number_of_uploads_for_the_current_minute<MAX_UPLOAD_RATE_PER_MINUTE) {
@@ -755,8 +748,8 @@ void loop() {
 		#endif
 		if (okay_to_upload) {
 			//upload_to_feed(wifi_rssi);
-			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
-				debug("middle of upload");
+			if (hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+				//debug("middle of upload");
 				total_number_of_uploads++;
 				number_of_uploads_for_the_current_minute++;
 				#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
@@ -782,7 +775,7 @@ void loop() {
 				#endif
 			}
 		}
-		debug("end of upload");
+		//debug("end of upload");
 	}
 	delay(1);
 	count++;
@@ -963,17 +956,17 @@ bool check_tft(void) {
 
 bool setup_lora(void) {
 	if (!lora.init()) {
-		Serial.println("LoRa radio init failed");
-		tft.println("LoRa radio init failed");
+		Serial.println("LoRa init failed");
+		tft.println("LoRa init failed");
 	} else {
-		Serial.println("LoRa radio init OK!");
-		tft.println("LoRa radio init OK!");
+		Serial.println("LoRa init OK!");
+		tft.println("LoRa init OK!");
 		if (!lora.setFrequency(LORA_FREQ)) {
-			Serial.println("LoRa radio set frequency failed");
-			tft.println("LoRa radio set frequency failed");
+			Serial.println("LoRa set frequency failed");
+			tft.println("LoRa set frequency failed");
 		} else {
-			Serial.println("LoRa radio set frequency OK!");
-			tft.println("LoRa radio set frequency OK!");
+			Serial.println("LoRa set frequency OK!");
+			tft.println("LoRa set frequency OK!");
 		}
 		Serial.print("Set Freq to: "); Serial.println(LORA_FREQ);
 		tft.print("Set Freq to: "); tft.println(LORA_FREQ);
@@ -1036,7 +1029,7 @@ int get_lora_rssi(void) {
 }
 
 bool parse_lora_raw(const char *raw_message) {
-	debug("parse_lora_raw()");
+	//debug("parse_lora_raw()");
 	// compare to regexp: re.search("^" + PREFIX + "node([0-9]+)\[([0-9]+)\](.*)" + SUFFIX + "$", packet_text)
 	int len = strnlen(raw_message, MAX_STRING_LENGTH);
 	//Serial.print("received lora string length: "); Serial.println(len);
@@ -1135,12 +1128,12 @@ next2:
 	message[len-s-i] = 0;
 	//Serial.print("remaining message: ");
 	//Serial.println(message);
-	debug("parse_lora_raw(return)");
+	//debug("parse_lora_raw(return)");
 	return true;
 }
 
 bool parse_lora_message(const char *string) {
-	debug("parse_lora_message()");
+	//debug("parse_lora_message()");
 	// "pong rssi=-101"
 	int string_len = strlen(string);
 	int len = strnlen(message, MAX_STRING_LENGTH);
@@ -1187,7 +1180,7 @@ bool parse_lora_message(const char *string) {
 	strncpy(numeric_string, message+index_a, index_b-index_a);
 	numeric_string[index_b-index_a] = 0;
 	lora_rssi_ping = -atoi(numeric_string);
-	debug("parse_lora_message(return)");
+	//debug("parse_lora_message(return)");
 	return true;
 }
 
@@ -1198,7 +1191,7 @@ void send_lora_ping(void) {
 }
 
 void get_lora_pong(void) {
-	debug("get_lora_pong()");
+	//debug("get_lora_pong()");
 	uint8_t len;
 	lora.waitAvailableTimeout(500);
 	for (int i=0; i<MAX_PONG_TRIES; i++) {
@@ -1228,7 +1221,7 @@ void get_lora_pong(void) {
 		send_lora_string("ping");
 		delay(500);
 	}
-	debug("get_lora_pong(return)");
+	//debug("get_lora_pong(return)");
 }
 
 #endif
