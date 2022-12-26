@@ -8,6 +8,8 @@
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
 // last updated 2022-12-25 by mza
 
+#define MAX_PONG_TRIES 2
+uint8_t verbosity = 4; // debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
 #define SCREEN_UPDATE_DIVISOR (512)
@@ -141,7 +143,7 @@ bool setup_lora(void);
 #else
 	#define LENGTH_OF_LINE (21)
 	#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
-	char line[LENGTH_OF_LINE] = "";
+	char line[LENGTH_OF_LINE+1] = "";
 #endif
 
 //#include "AdafruitIO_WiFi.h"
@@ -217,6 +219,7 @@ void pushGPGGA(NMEA_GGA_data_t *nmeaData) {
 //        |                 |              |
 
 void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
+	debug("printPVTdata()");
 	year = ubxDataStruct->year;
 	month = ubxDataStruct->month;
 	day = ubxDataStruct->day;
@@ -276,6 +279,7 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	lon = longitude / 10000000.0;
 	ele = altitude / 1000.0;
 	horizontal_accuracy_mm = hAcc_mm;
+	debug("printPVTdata(return)");
 }
 
 #include <stdint.h>
@@ -386,10 +390,38 @@ uint32_t upload_to_feed_with_location(uint32_t value, float latitude, float long
 	return value;
 }
 
+void debug(const char *message) {
+	if (4<=verbosity) {
+		Serial.print("DEBUG: ");
+		Serial.println(message);
+	}
+}
+
+void info(const char *message) {
+	if (3<=verbosity) {
+		Serial.println(message);
+	}
+}
+
+void warning(const char *message) {
+	if (2<=verbosity) {
+		Serial.print("WARNING: ");
+		Serial.println(message);
+	}
+}
+
+void error(const char *message) {
+	if (1<=verbosity) {
+		Serial.print("ERROR: ");
+		Serial.println(message);
+	}
+}
+
 void setup() {
 	Serial.begin(115200);
 	delay(1500);
-	Serial.println(F("geologger"));
+	Serial.println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
+	Serial.println("geologger");
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
 	#endif
@@ -580,6 +612,7 @@ void loop() {
 		#endif
 	}
 	if (0==count%SCREEN_UPDATE_DIVISOR) {
+		debug("start of screen update");
 		#ifdef USE_WIFI
 			int n = WiFi.scanNetworks();
 		#endif
@@ -593,26 +626,35 @@ void loop() {
 			// could add fixType etc here...
 		#else
 			tft.setCursor(CURSOR_X, CURSOR_Y);
-			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %-*u", LENGTH_OF_LINE, horizontal_accuracy_mm);
+			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %u%*s", horizontal_accuracy_mm, LENGTH_OF_LINE, "");
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %-*u", LENGTH_OF_LINE, vAcc_mm);
+			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %u%*s", vAcc_mm, LENGTH_OF_LINE, "");
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "numSV: %-*d", LENGTH_OF_LINE, numSV);
+			snprintf(line, LENGTH_OF_LINE, "numSV: %d%*s", numSV, LENGTH_OF_LINE, "");
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
 			//snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP);
 			//tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str());
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str());
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "diffSoln: %-*d", LENGTH_OF_LINE, diffSoln);
+			snprintf(line, LENGTH_OF_LINE, "diffSoln: %d%*s", diffSoln, LENGTH_OF_LINE, "");
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
 			//snprintf(line, LENGTH_OF_LINE, "height_mm: %-*d", LENGTH_OF_LINE, height_mm);
 			//tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%*s", total_number_of_uploads, number_of_uploads_for_the_current_minute, LENGTH_OF_LINE, "");
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "loraRSSI: %d%*s", lora_rssi_ping, LENGTH_OF_LINE, "");
+			Serial.println(strnlen(line, LENGTH_OF_LINE));
 			tft.println(line);
+			debug("middle of screen update");
 		#endif
 		#ifdef USE_WIFI
 		if (0==n) {
@@ -675,8 +717,10 @@ void loop() {
 			tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
 			//Serial.println("done");
 		#endif
+		debug("end of screen update");
 	}
 	if (0==count%UPLOAD_DIVISOR) {
+		debug("start of upload");
 		bool okay_to_upload = false;
 		if (total_number_of_uploads<MAX_UPLOADS) {
 			if (number_of_uploads_for_the_current_minute<MAX_UPLOAD_RATE_PER_MINUTE) {
@@ -705,6 +749,7 @@ void loop() {
 		if (okay_to_upload) {
 			//upload_to_feed(wifi_rssi);
 			if (horizontal_accuracy_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+				debug("middle of upload");
 				total_number_of_uploads++;
 				number_of_uploads_for_the_current_minute++;
 				#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
@@ -730,6 +775,7 @@ void loop() {
 				#endif
 			}
 		}
+		debug("end of upload");
 	}
 	delay(1);
 	count++;
@@ -983,6 +1029,7 @@ int get_lora_rssi(void) {
 }
 
 bool parse_lora_raw(const char *raw_message) {
+	debug("parse_lora_raw()");
 	// compare to regexp: re.search("^" + PREFIX + "node([0-9]+)\[([0-9]+)\](.*)" + SUFFIX + "$", packet_text)
 	int len = strnlen(raw_message, MAX_STRING_LENGTH);
 	//Serial.print("received lora string length: "); Serial.println(len);
@@ -1081,10 +1128,12 @@ next2:
 	message[len-s-i] = 0;
 	//Serial.print("remaining message: ");
 	//Serial.println(message);
+	debug("parse_lora_raw(return)");
 	return true;
 }
 
 bool parse_lora_message(const char *string) {
+	debug("parse_lora_message()");
 	// "pong rssi=-101"
 	int string_len = strlen(string);
 	int len = strnlen(message, MAX_STRING_LENGTH);
@@ -1131,6 +1180,7 @@ bool parse_lora_message(const char *string) {
 	strncpy(numeric_string, message+index_a, index_b-index_a);
 	numeric_string[index_b-index_a] = 0;
 	lora_rssi_ping = -atoi(numeric_string);
+	debug("parse_lora_message(return)");
 	return true;
 }
 
@@ -1140,11 +1190,11 @@ void send_lora_ping(void) {
 	send_lora_string("ping");
 }
 
-#define MAX_TRIES 5
 void get_lora_pong(void) {
+	debug("get_lora_pong()");
 	uint8_t len;
 	lora.waitAvailableTimeout(500);
-	for (int i=0; i<MAX_TRIES; i++) {
+	for (int i=0; i<MAX_PONG_TRIES; i++) {
 		len = MAX_STRING_LENGTH;
 		lora.recv(recvpacket, &len);
 		if (0<len) {
@@ -1171,6 +1221,7 @@ void get_lora_pong(void) {
 		send_lora_string("ping");
 		delay(500);
 	}
+	debug("get_lora_pong(return)");
 }
 
 #endif
