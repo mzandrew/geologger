@@ -150,7 +150,7 @@ bool setup_lora(void);
 	#define LENGTH_OF_LINE (21)
 	#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
 	char line[LENGTH_OF_LINE] = "";
-	const char blanks[LENGTH_OF_LINE] = "                    ";
+	const char blanks[] = "                    ";
 #endif
 
 //#include "AdafruitIO_WiFi.h"
@@ -643,6 +643,18 @@ void loop() {
 			// could add fixType etc here...
 		#else
 			tft.setCursor(CURSOR_X, CURSOR_Y);
+			//snprintf(line, LENGTH_OF_LINE, "uptime: %d%s", (millis()-startTime)/1000, blanks); tft.println(line); delay(300); // gets to 500 with 250 ms delay
+			snprintf(line, LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
+			tft.println(line);
+			delay(300);
+//			while (tft.dmaBusy()) { Serial.println("waiting for tft"); delay(10); } // this didn't fix anything
+			Serial.println(line);
+//			String asdf = "                    ";
+//			for (int k=0; k<8; k++) {
+//				tft.println(blanks);
+//				tft.println(asdf);
+//				delay(250); // gets to 400 with 250ms delay
+//			}
 			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); //tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); //tft.println(line);
 			snprintf(line, LENGTH_OF_LINE, "numSV: %d%s", numSV, blanks); //tft.println(line);
