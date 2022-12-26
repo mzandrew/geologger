@@ -640,11 +640,11 @@ void loop() {
 	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime) {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			if (lora_is_available) {
-//				if (900<currentTime-screenUpdateTime) {
+				if (900<currentTime-screenUpdateTime) {
 					send_lora_ping();
 					get_lora_pong();
 					pingPongTime = millis();
-//				}
+				}
 			}
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
