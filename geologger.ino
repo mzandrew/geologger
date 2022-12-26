@@ -14,6 +14,7 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define JUNK_RSSI (-151)
 #define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1000)
 #define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (500)
+#define SCREEN_UPDATE_MINI_TIMEOUT_IN_MILLISECONDS (305)
 #define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
@@ -46,6 +47,7 @@ unsigned long startTime = 0;
 unsigned long currentTime = 0;
 unsigned long pingPongTime = 0;
 unsigned long screenUpdateTime = 0;
+unsigned long screenUpdateMiniTime = 0;
 unsigned long uploadTime = 0;
 
 #include <SPI.h>
@@ -149,8 +151,10 @@ bool setup_lora(void);
 #else
 	#define LENGTH_OF_LINE (21)
 	#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
-	char line[LENGTH_OF_LINE] = "";
+	#define NUMBER_OF_LINES (8)
+	char line[NUMBER_OF_LINES][LENGTH_OF_LINE];
 	const char blanks[] = "                    ";
+	char paragraph[NUMBER_OF_LINES*LENGTH_OF_LINE];
 #endif
 
 //#include "AdafruitIO_WiFi.h"
@@ -558,9 +562,11 @@ void setup() {
 		//reset_tft();
 		//check_tft();
 	#endif
-	delay(1000);
+	//delay(1000);
+	tft.setCursor(CURSOR_X, CURSOR_Y);
 }
 
+unsigned l = 0;
 void loop() {
 	currentTime = millis();
 	static short int count = 0;
@@ -642,39 +648,37 @@ void loop() {
 			tft_top.println(total_number_of_uploads);
 			// could add fixType etc here...
 		#else
-			tft.setCursor(CURSOR_X, CURSOR_Y);
 			//snprintf(line, LENGTH_OF_LINE, "uptime: %d%s", (millis()-startTime)/1000, blanks); tft.println(line); delay(300); // gets to 500 with 250 ms delay
-			snprintf(line, LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
-			tft.println(line);
-			delay(300);
+			snprintf(line[0], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
 //			while (tft.dmaBusy()) { Serial.println("waiting for tft"); delay(10); } // this didn't fix anything
-			Serial.println(line);
+			Serial.println(line[0]);
 //			String asdf = "                    ";
 //			for (int k=0; k<8; k++) {
 //				tft.println(blanks);
 //				tft.println(asdf);
 //				delay(250); // gets to 400 with 250ms delay
 //			}
-			snprintf(line, LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); //tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); //tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "numSV: %d%s", numSV, blanks); //tft.println(line);
-			//snprintf(line, LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); //tft.println(line);
-			//snprintf(line, LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line);
-			snprintf(line, LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line);
+			snprintf(line[0], LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); //tft.println(line[0]);
+			snprintf(line[1], LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); //tft.println(line[1]);
+			snprintf(line[2], LENGTH_OF_LINE, "numSV: %d%s", numSV, blanks); //tft.println(line[2]);
+			//snprintf(line[], LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
+			snprintf(line[3], LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
+			snprintf(line[4], LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
+			snprintf(line[5], LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); //tft.println(line[5]);
+			//snprintf(line[], LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line[]);
+			snprintf(line[6], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[6]);
+			snprintf(line[7], LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line[7]);
 			debug("middle of screen update");
 		#endif
 		#ifdef USE_WIFI
+		const unsigned offset = 8;
 		if (0==n) {
 			Serial.println("no networks found");
 			#ifdef USE_BLITTER
 				tft_top.println("no networks found");
 			#else
-				snprintf(line, LENGTH_OF_LINE, "%-*s", LENGTH_OF_LINE, "no networks found");
-				tft.println(line);
+				snprintf(line[offset], LENGTH_OF_LINE, "%-*s", LENGTH_OF_LINE, "no networks found");
+				tft.println(line[offset]);
 			#endif
 		} else {
 			Serial.print("#networks: ");
@@ -683,8 +687,8 @@ void loop() {
 				tft_top.print("#networks: ");
 				tft_top.println(n);
 			#else
-				snprintf(line, LENGTH_OF_LINE, "#networks: %-*d", LENGTH_OF_LINE, n);
-				tft.println(line);
+				snprintf(line[offset], LENGTH_OF_LINE, "#networks: %-*d", LENGTH_OF_LINE, n);
+				tft.println(line[offset]);
 			#endif
 		}
 		#endif
@@ -707,8 +711,8 @@ void loop() {
 					tft_bottom.print(" ");
 					tft_bottom.println(WiFi.SSID(i));
 				#else
-					snprintf(line, LENGTH_OF_LINE, "%3d %-*s", WiFi.RSSI(i), LENGTH_OF_SSID, WiFi.SSID(i).c_str());
-					tft.println(line);
+					snprintf(line[offset+i], LENGTH_OF_LINE, "%3d %-*s", WiFi.RSSI(i), LENGTH_OF_SSID, WiFi.SSID(i).c_str());
+					tft.println(line[offset+i]);
 				#endif
 				if (strncmp(WiFi.SSID(i).c_str(), ssid, length)) {
 					//Serial.println("match!");
@@ -729,6 +733,19 @@ void loop() {
 			//Serial.println("done");
 		#endif
 		debug("end of screen update");
+	}
+	if (SCREEN_UPDATE_MINI_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateMiniTime) {
+		screenUpdateMiniTime = millis();
+		debug("end of screen mini update");
+		//tft.println(line[l]);
+		//delay(300);
+		if (l<NUMBER_OF_LINES-1) {
+			l++;
+		} else {
+			l = 0;
+			tft.setCursor(CURSOR_X, CURSOR_Y);
+		}
+		debug("end of screen mini update");
 	}
 	if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
 		uploadTime = millis();
