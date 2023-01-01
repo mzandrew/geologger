@@ -6,7 +6,7 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2022-12-26 by mza
+// last updated 2022-12-31 by mza
 
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
@@ -85,6 +85,9 @@ bool setup_lora(void);
 #define BUTTON2 (16) // GPIO16 = A2
 bool previous_button1 = false;
 bool previous_button2 = false;
+unsigned long previous_button1_change_time = 0;
+unsigned long previous_button2_change_time = 0;
+#define BUTTON_DEBOUNCE_TIME (50) // in milliseconds
 
 /*
 	Use ESP32 WiFi to get RTCM data from Swift Navigation's Skylark caster as a Client, and transmit GGA using a callback
@@ -594,6 +597,8 @@ void setup() {
 	pinMode(BUTTON2, INPUT_PULLDOWN);
 	previous_button1 = digitalRead(BUTTON1);
 	previous_button2 = digitalRead(BUTTON2);
+	previous_button1_change_time = millis();
+	previous_button2_change_time = millis();
 	pingPongTime = millis();
 	screenUpdateTime = millis();
 	uploadTime = millis();
@@ -610,14 +615,28 @@ void loop() {
 	bool button1_was_just_pressed = false;
 	bool button2_was_just_pressed = false;
 	if (previous_button1!=button1) {
-		button1_was_just_pressed = true;
+		if (previous_button1_change_time<currentTime-BUTTON_DEBOUNCE_TIME) {
+			if (button1) {
+				Serial.println("button1 was just pressed");
+				button1_was_just_pressed = true;
+			} else {
+				Serial.println("button1 was just released");
+			}
+			previous_button1_change_time = currentTime;
+		}
 		previous_button1 = button1;
-		Serial.println("button1 was just pressed");
 	}
 	if (previous_button2!=button2) {
-		button2_was_just_pressed = true;
+		if (previous_button2_change_time<currentTime-BUTTON_DEBOUNCE_TIME) {
+			if (button2) {
+				Serial.println("button2 was just pressed");
+				button2_was_just_pressed = true;
+			} else {
+				Serial.println("button2 was just released");
+			}
+			previous_button2_change_time = currentTime;
+		}
 		previous_button2 = button2;
-		Serial.println("button2 was just pressed");
 	}
 	if (button2_was_just_pressed) {
 		should_do_a_lora_pingpong = true;
