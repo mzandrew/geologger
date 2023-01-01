@@ -207,6 +207,8 @@ uint8_t  second = 70; // Seconds of minute, range 0..60 (UTC)
 uint8_t current_minute = 70; // for upload counter
 uint32_t number_of_uploads_for_the_current_minute = 0;
 uint32_t total_number_of_uploads = 0;
+uint32_t total_number_of_pings_sent = 0;
+uint32_t total_number_of_pongs_received = 0;
 
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> //http://librarymanager/All#SparkFun_u-blox_GNSS
 SFE_UBLOX_GNSS myGNSS;
@@ -742,7 +744,7 @@ void loop() {
 				snprintf(line[4], LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
 				//snprintf(line[], LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line[]);
 				snprintf(line[5], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[5]);
-				snprintf(line[6], LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line[6]);
+				snprintf(line[6], LENGTH_OF_LINE, "loraRSSI: %d (%d/%d)%s", lora_rssi_ping, total_number_of_pings_sent, total_number_of_pongs_received, blanks); //tft.println(line[6]);
 				snprintf(line[7], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
 				//Serial.println(line[7]);
 				//debug("middle of screen update");
@@ -1290,6 +1292,7 @@ bool parse_lora_message(const char *string) {
 	strncpy(numeric_string, message+index_a, index_b-index_a);
 	numeric_string[index_b-index_a] = 0;
 	lora_rssi_ping = -atoi(numeric_string);
+	total_number_of_pongs_received++;
 	lora_hAcc_mm = hAcc_mm;
 	lora_lat = lat;
 	lora_lon = lon;
@@ -1306,6 +1309,7 @@ void send_lora_ping(void) {
 	lora_lon = JUNK_LON;
 	lora_ele = JUNK_ELE;
 	send_lora_string("ping");
+	total_number_of_pings_sent++;
 }
 
 void flush_lora(void) {
