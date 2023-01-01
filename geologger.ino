@@ -14,6 +14,7 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1201)
 #define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (1000)
 #define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
+#define EXTRA_WAIT (450) // works around bug
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
@@ -708,7 +709,7 @@ void loop() {
 	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime && should_do_a_lora_pingpong) {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			if (lora_is_available) {
-				if (900<currentTime-screenUpdateTime) {
+				if (EXTRA_WAIT<currentTime-screenUpdateTime) {
 					send_lora_ping();
 					get_lora_pong();
 					pingPongTime = millis();
@@ -720,7 +721,7 @@ void loop() {
 			}
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
-		if (900<currentTime-pingPongTime) {
+		if (EXTRA_WAIT<currentTime-pingPongTime) {
 			screenUpdateTime = millis();
 			//debug("start of screen update");
 			#ifdef USE_WIFI
