@@ -11,7 +11,7 @@
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
-#define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1201)
+#define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1000)
 #define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (1000)
 #define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
 #define EXTRA_WAIT (450) // works around bug
