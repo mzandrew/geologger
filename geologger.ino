@@ -6,7 +6,7 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2022-12-31 by mza
+// last updated 2023-01-01 by mza
 
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
@@ -617,10 +617,10 @@ void loop() {
 	if (previous_button1!=button1) {
 		if (previous_button1_change_time<currentTime-BUTTON_DEBOUNCE_TIME) {
 			if (button1) {
-				Serial.println("button1 was just pressed");
+				//Serial.println("button1 was just pressed");
 				button1_was_just_pressed = true;
 			} else {
-				Serial.println("button1 was just released");
+				//Serial.println("button1 was just released");
 			}
 			previous_button1_change_time = currentTime;
 		}
@@ -629,10 +629,10 @@ void loop() {
 	if (previous_button2!=button2) {
 		if (previous_button2_change_time<currentTime-BUTTON_DEBOUNCE_TIME) {
 			if (button2) {
-				Serial.println("button2 was just pressed");
+				//Serial.println("button2 was just pressed");
 				button2_was_just_pressed = true;
 			} else {
-				Serial.println("button2 was just released");
+				//Serial.println("button2 was just released");
 			}
 			previous_button2_change_time = currentTime;
 		}
@@ -744,7 +744,7 @@ void loop() {
 				snprintf(line[5], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[5]);
 				snprintf(line[6], LENGTH_OF_LINE, "loraRSSI: %d%s", lora_rssi_ping, blanks); //tft.println(line[6]);
 				snprintf(line[7], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
-				Serial.println(line[7]);
+				//Serial.println(line[7]);
 				//debug("middle of screen update");
 				int k = 0;
 				for (int l=0; l<NUMBER_OF_LINES; l++) {
@@ -853,8 +853,6 @@ void loop() {
 				//upload_to_feed(wifi_rssi);
 				if (hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
 					//debug("middle of upload");
-					total_number_of_uploads++;
-					number_of_uploads_for_the_current_minute++;
 					#ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
 						upload_to_feed_with_location(wifi_rssi, lat, lon, ele);
 					#endif
@@ -869,6 +867,8 @@ void loop() {
 								delay(2000);
 							#endif
 							if (RSSI_THRESHOLD<lora_rssi_ping) {
+								total_number_of_uploads++;
+								number_of_uploads_for_the_current_minute++;
 								//delay(500);
 								uploadTime = millis();
 								send_lora_int_with_location(lora_rssi_ping, lora_lat, lora_lon, lora_ele, "lora-rssi-ping");
