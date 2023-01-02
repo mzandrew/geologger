@@ -23,6 +23,7 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 //#define POST_WIFI_RSSI_DATA_OVER_LORA
 #define POST_LORA_RSSI_DATA_OVER_LORA
 //#define DEBUG_LORA_RSSI
+#define LORA_TX_POWER (20) // [5,20]
 
 #ifdef POST_WIFI_RSSI_DATA_OVER_LORA
 	#define USE_LORA
@@ -1079,9 +1080,13 @@ bool setup_lora(void) {
 			Serial.println("LoRa set frequency OK!");
 			tft.println("LoRa set frequency OK!");
 		}
-		Serial.print("Set Freq to: "); Serial.println(LORA_FREQ);
-		tft.print("Set Freq to: "); tft.println(LORA_FREQ);
-		lora.setTxPower(5, false); // [5,23]
+		Serial.print("LoRa freq: "); Serial.print(LORA_FREQ); Serial.println(" MHz");
+		tft.print("LoRa freq: "); tft.print(LORA_FREQ); tft.println(" MHz");
+		lora.setTxPower(LORA_TX_POWER, false);
+		//int tx_power_dbm = lora.getTxPower();
+		int tx_power_dbm = LORA_TX_POWER;
+		Serial.print("LoRa tx power: "); Serial.print(tx_power_dbm); Serial.println(" dBm");
+		tft.print("LoRa tx power: "); tft.print(tx_power_dbm); tft.println(" dBm");
 		lora_is_available = true;
 	}
 	return lora_is_available;
