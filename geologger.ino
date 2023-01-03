@@ -6,7 +6,7 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2023-01-01 by mza
+// last updated 2023-01-02 by mza
 
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
@@ -746,7 +746,7 @@ void loop() {
 				snprintf(line[4], LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
 				//snprintf(line[], LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line[]);
 				snprintf(line[5], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[5]);
-				snprintf(line[6], LENGTH_OF_LINE, "loraRSSI: %d (%d/%d)%s", lora_rssi_ping, total_number_of_pings_sent, total_number_of_pongs_received, blanks); //tft.println(line[6]);
+				snprintf(line[6], LENGTH_OF_LINE, "loraRSSI: %d (%d/%d)%s", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent, blanks); //tft.println(line[6]);
 				snprintf(line[7], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
 				//Serial.println(line[7]);
 				//debug("middle of screen update");
