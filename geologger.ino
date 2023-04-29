@@ -344,11 +344,6 @@ void setup() {
 		}
 	#endif
 	//delay(1000);
-	#ifdef USE_LORA
-		if (lora_is_available) {
-//			flush_lora(); // this makes it less stable
-		}
-	#endif
 	pinMode(BUTTON1, INPUT_PULLDOWN);
 	pinMode(BUTTON2, INPUT_PULLDOWN);
 	previous_button1 = digitalRead(BUTTON1);
@@ -402,11 +397,6 @@ void loop() {
 	static short int count = 0;
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
 	myGNSS.checkCallbacks(); // Check if any GNSS callbacks are waiting to be processed.
-	#ifdef USE_LORA
-		if (lora_is_available) {
-//			flush_lora(); // this makes it less stable
-		}
-	#endif
 	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime && should_do_a_lora_pingpong) {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			if (lora_is_available) {
@@ -517,18 +507,6 @@ void loop() {
 	count++;
 }
 
-//Return true if a key has been pressed
-bool keyPressed() {
-	if (Serial.available()) { // Check for a new key press
-		delay(100); // Wait for any more keystrokes to arrive
-		while (Serial.available()) { // Empty the serial buffer
-			Serial.read();
-		}
-		return (true);
-	}
-	return (false);
-}
-
 #ifdef USE_LORA
 
 bool setup_lora(void) {
@@ -562,12 +540,6 @@ bool setup_lora(void) {
 	}
 	return lora_is_available;
 }
-
-//void lora_waitPacketSent(void) {
-//	//debug("lora_waitPacketSent()");
-//	lora.waitPacketSent(); // takes about 70 ms
-//	//debug("lora_waitPacketSent(return)");
-//}
 
 bool send_lora_string(const char *string) {
 	static unsigned messageid = 1;
@@ -793,20 +765,6 @@ void send_lora_ping(void) {
 	lora_ele = JUNK_ELE;
 	send_lora_string("ping");
 	total_number_of_pings_sent++;
-}
-
-void flush_lora(void) {
-	if (lora.waitAvailableTimeout(1)) {
-		Serial.print("some data is pending in the lora buffer: ");
-		uint8_t len = MAX_STRING_LENGTH;
-		lora.recv(recvpacket, &len);
-		Serial.print(len);
-		Serial.print(" bytes ");
-		recvpacket[len] = 0;
-		Serial.println((const char *) recvpacket);
-	} else {
-		//Serial.println("no data is pending in the lora buffer");
-	}
 }
 
 void get_lora_pong(void) {
