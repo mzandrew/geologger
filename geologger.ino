@@ -63,9 +63,6 @@ char message[MAX_STRING_LENGTH];
 //#define RFM95_CS  8
 //#define RFM95_RST 4
 //#define RFM95_INT 3
-#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
-	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
-#endif
 #ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
 	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
 #endif
@@ -101,18 +98,6 @@ unsigned long previous_button2_change_time = 0;
 #define BUTTON_DEBOUNCE_TIME (50) // in milliseconds
 
 //#define STMPE_CS 6
-#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
-	#include <Adafruit_ILI9341.h>
-	#define TFT_CS 9
-	#define TFT_DC 10
-	#define TFT_RESET (-1) // not connected to feather pins; goes to apx803
-	//#define SD_CS 5 // microSD
-	//#define RT_CS 6 // resistive touchscreen
-	Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, MOSI, SCK, TFT_RESET, MISO);
-	//Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC);
-	#define TFT_WIDTH  (240)
-	#define TFT_HEIGHT (320)
-#endif
 #ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 	#include <Adafruit_ST7789.h>
 	Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
@@ -298,29 +283,7 @@ void setup() {
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
 	#endif
-	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
-		#define PIN_I2C_POWER (7)
-		pinMode(PIN_I2C_POWER, INPUT);
-		delay(100);
-		bool polarity = digitalRead(PIN_I2C_POWER);
-		pinMode(PIN_I2C_POWER, OUTPUT);
-		digitalWrite(PIN_I2C_POWER, !polarity);
-	#endif
 	//uint8_t x;
-	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
-		tft.begin();
-		check_tft();
-		#ifdef USE_BLITTER
-			tft.setFont(&FreeMono9pt7b);
-			tft_top.setFont(&FreeMono9pt7b);
-			tft_bottom.setFont(&FreeMono9pt7b);
-			tft.setTextSize(1);
-		#endif
-		tft.setCursor(0, 10);
-		tft.setRotation(2);
-		tft.fillScreen(ILI9341_BLACK);
-		tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
-	#endif
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 		pinMode(TFT_I2C_POWER, OUTPUT);
 		digitalWrite(TFT_I2C_POWER, HIGH);
@@ -387,9 +350,6 @@ void setup() {
 	while (Serial.available()) { // Empty the serial buffer
 		Serial.read();
 	}
-	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
-		check_tft();
-	#endif
 	#ifdef USE_LORA
 		setup_lora();
 		if (lora_is_available) {
@@ -397,11 +357,6 @@ void setup() {
 			//send_lora_string("ed209");
 			//send_lora_string("robo");
 		}
-	#endif
-	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
-		check_tft();
-		//reset_tft();
-		//check_tft();
 	#endif
 	//delay(1000);
 	#ifdef USE_LORA
@@ -613,23 +568,6 @@ bool keyPressed() {
 	}
 	return (false);
 }
-
-#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
-bool reset_tft(void) {
-	tft.sendCommand(ILI9341_SWRESET);
-	delay(150);
-	return true;
-}
-
-bool check_tft(void) {
-	uint8_t x;
-	x = tft.readcommand8(ILI9341_RDMODE); // 0x94
-	Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
-	x = tft.readcommand8(ILI9341_RDSELFDIAG); // 0xc0
-	Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX);
-	return true;
-}
-#endif
 
 #ifdef USE_LORA
 
