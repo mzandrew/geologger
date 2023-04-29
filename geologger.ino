@@ -18,15 +18,10 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
-//#define POST_WIFI_RSSI_DATA_OVER_LORA
 #define POST_LORA_RSSI_DATA_OVER_LORA
 //#define DEBUG_LORA_RSSI
 #define LORA_TX_POWER (20) // [5,20]
 
-#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
-	#define USE_LORA
-	#define USE_WIFI
-#endif
 #ifdef POST_LORA_RSSI_DATA_OVER_LORA
 	#define USE_LORA
 	int lora_rssi_ping = JUNK_RSSI;
@@ -830,12 +825,6 @@ void loop() {
 			#endif
 			if (okay_to_upload) {
 				//upload_to_feed(wifi_rssi);
-				if (hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
-					//debug("middle of upload");
-					#ifdef POST_WIFI_RSSI_DATA_OVER_LORA
-							send_lora_int_with_location(wifi_rssi, lat, lon, ele, "wifi-rssi");
-					#endif
-				}
 				#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 					if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
 						if (lora_is_available) {
