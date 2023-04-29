@@ -31,7 +31,6 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1000)
 #define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (1000)
 #define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
-#define EXTRA_WAIT (450) // works around bug
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
@@ -59,29 +58,19 @@ const char SUFFIX[]="BOOPS";
 uint8_t recvpacket[MAX_STRING_LENGTH];
 char message[MAX_STRING_LENGTH];
 
-// for feather m0:
-//#define RFM95_CS  8
-//#define RFM95_RST 4
-//#define RFM95_INT 3
 #ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
-	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
+	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 #endif
 #ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_REVTFT
-	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
+	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 #endif
-#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 	//#define RFM95_INT (10) // B = IRQ
 	//#define RFM95_CS   (5) // E = CS
 	//#define RFM95_RST  (6) // D = reset
-	#define RFM95_INT (12) // GPIO12 = IRQ
+	#define RFM95_INT  (0) // IRQ not connected
 	#define RFM95_CS  (13) // GPIO13 = CS
 	#define RFM95_RST  (8) // F = GPIO8 = reset
-#endif
-#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
-	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
-#endif
-#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_REVTFT
-	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 #endif
 #define LORA_FREQ (905.0)
 RH_RF95 lora(RFM95_CS, RFM95_INT);
@@ -265,6 +254,12 @@ void setup() {
 	sprintf(paragraph, "startTime: %ld", startTime);
 	Serial.println(paragraph); //tft.println(paragraph);
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
+		pinMode(RFM95_RST, OUTPUT);
+		digitalWrite(RFM95_RST, LOW);
+		delay(100);
+		pinMode(RFM95_RST, OUTPUT);
+		digitalWrite(RFM95_RST, HIGH);
+		delay(100);
 		pinMode(TFT_I2C_POWER, OUTPUT);
 		digitalWrite(TFT_I2C_POWER, HIGH);
 		delay(100);
@@ -388,55 +383,51 @@ void loop() {
 	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime && should_do_a_lora_pingpong) {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			if (lora_is_available) {
-				if (EXTRA_WAIT<currentTime-screenUpdateTime) {
-					send_lora_ping();
-					//get_lora_pong();
-					pingPongTime = millis();
-					should_do_a_lora_pingpong = false;
-					if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
-						should_do_an_upload = true;
-					}
+				send_lora_ping();
+				//get_lora_pong();
+				pingPongTime = millis();
+				should_do_a_lora_pingpong = false;
+				if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+					should_do_an_upload = true;
 				}
 			}
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
-		if (EXTRA_WAIT<currentTime-pingPongTime) {
-			screenUpdateTime = millis();
-			//debug("start of screen update");
-			sprintf(line[0], "hAcc_mm: %u", hAcc_mm); //tft.println(line[0]);
-			sprintf(line[1], "vAcc_mm: %u", vAcc_mm); //tft.println(line[1]);
-			sprintf(line[2], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
-			//sprintf(line[5], "diffSoln: %d", diffSoln); //tft.println(line[5]);
-			//sprintf(line[], "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
-			sprintf(line[3], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
-			sprintf(line[4], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
-			//snprintf(line[], "height_mm: %d", height_mm); //tft.println(line[]);
-			sprintf(line[5], "#uploads: %d (%d)", total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
-			sprintf(line[6], "loraRSSI: %d (%d/%d)", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent); //tft.println(line[6]);
-			sprintf(line[7], "uptime: %'ld", (millis()-startTime)/1000);
-			//Serial.println(line[7]);
-			//debug("middle of screen update");
-			int k = 0;
-			for (int l=0; l<NUMBER_OF_LINES; l++) {
-				bool junk = false;
-				for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
-					if (0==line[l][j]) {
-						junk = true;
-					}
-					if (not junk) {
-						paragraph[k] = line[l][j];
-					} else {
-						paragraph[k] = 32;
-					}
+		screenUpdateTime = millis();
+		//debug("start of screen update");
+		sprintf(line[0], "hAcc_mm: %u", hAcc_mm); //tft.println(line[0]);
+		sprintf(line[1], "vAcc_mm: %u", vAcc_mm); //tft.println(line[1]);
+		sprintf(line[2], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
+		//sprintf(line[5], "diffSoln: %d", diffSoln); //tft.println(line[5]);
+		//sprintf(line[], "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
+		sprintf(line[3], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
+		sprintf(line[4], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
+		//snprintf(line[], "height_mm: %d", height_mm); //tft.println(line[]);
+		sprintf(line[5], "#uploads: %d (%d)", total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
+		sprintf(line[6], "loraRSSI: %d (%d/%d)", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent); //tft.println(line[6]);
+		sprintf(line[7], "uptime: %'ld", (millis()-startTime)/1000);
+		//Serial.println(line[7]);
+		//debug("middle of screen update");
+		int k = 0;
+		for (int l=0; l<NUMBER_OF_LINES; l++) {
+			bool junk = false;
+			for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
+				if (0==line[l][j]) {
+					junk = true;
+				}
+				if (not junk) {
+					paragraph[k] = line[l][j];
+				} else {
+					paragraph[k] = 32;
 				}
 			}
-			paragraph[k] = 0;
-			//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
-			//Serial.println(paragraph);
-			tft.setCursor(CURSOR_X, CURSOR_Y);
-			tft.println(paragraph);
-			//debug("end of screen update");
 		}
+		paragraph[k] = 0;
+		//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
+		//Serial.println(paragraph);
+		tft.setCursor(CURSOR_X, CURSOR_Y);
+		tft.print(paragraph);
+		//debug("end of screen update");
 	} else if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
 		if (should_do_an_upload) {
 			//debug("start of upload");
