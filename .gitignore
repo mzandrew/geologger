@@ -1,2 +1,5 @@
 secrets.h
+debug.cfg
+debug_custom.json
+esp32s2.svd
 
