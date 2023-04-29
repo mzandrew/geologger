@@ -18,7 +18,6 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
-//#define GET_RTCM_FROM_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_WIFI
 //#define POST_WIFI_RSSI_DATA_OVER_LORA
 #define POST_LORA_RSSI_DATA_OVER_LORA
@@ -30,10 +29,6 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 	#define USE_WIFI
 #endif
 #ifdef POST_WIFI_RSSI_DATA_OVER_WIFI
-	#define USE_WIFI
-	#define CONNECT_TO_WIFI_NETWORK
-#endif
-#ifdef GET_RTCM_FROM_WIFI
 	#define USE_WIFI
 	#define CONNECT_TO_WIFI_NETWORK
 #endif
@@ -674,54 +669,6 @@ void loop() {
 	static short int count = 0;
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
 	myGNSS.checkCallbacks(); // Check if any GNSS callbacks are waiting to be processed.
-	#ifdef GET_RTCM_FROM_WIFI
-	enum states { // Use a 'state machine' to open and close the connection
-		open_connection,
-		push_data_and_wait_for_keypress,
-		close_connection,
-		waiting_for_keypress
-	};
-	static states state = open_connection;
-	//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-	switch (state) {
-		sprintf(paragraph, "Connect to NTRIP caster");
-		case open_connection:
-			Serial.println(paragraph); tft.println(paragraph);
-			if (beginClient()) { // Try to open the connection to the caster
-				Serial.println(F("Connected to the NTRIP caster! Press any key to disconnect..."));
-				state = push_data_and_wait_for_keypress; // Move on
-			} else {
-				Serial.print(F("Could not connect to the caster. Trying again in 5 seconds."));
-				for (int i = 0; i < 5; i++) {
-					delay(1000);
-					Serial.print(F("."));
-				}
-				Serial.println();
-			}
-			break;
-		//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-		case push_data_and_wait_for_keypress:
-			// If the connection has dropped or timed out, or if the user has pressed a key
-			if ((processConnection() == false) || (keyPressed())) {
-				state = close_connection; // Move on
-			}
-			break;
-		//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-		case close_connection:
-			Serial.println(F("Closing the connection to the NTRIP caster..."));
-			closeConnection();
-			Serial.println(F("Press any key to reconnect..."));
-			state = waiting_for_keypress; // Move on
-			break;
-		//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
-		case waiting_for_keypress:
-			// If the connection has dropped or timed out, or if the user has pressed a key
-			if (keyPressed()) {
-				state = open_connection; // Move on
-			}
-			break; 
-	}
-	#endif
 	#ifdef USE_WIFI
 		short int length = strlen(ssid);
 		int wifi_rssi = JUNK_RSSI;
