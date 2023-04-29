@@ -107,26 +107,11 @@ unsigned long previous_button2_change_time = 0;
 	#define CURSOR_Y (4)
 #endif
 
-//#define USE_BLITTER
-#ifdef USE_BLITTER
-	#include <Fonts/FreeMono9pt7b.h>
-	#define TFT_TOP_WIDTH     (TFT_WIDTH)
-	#define TFT_TOP_HEIGHT    (60)
-	#define TFT_BOTTOM_WIDTH  (TFT_WIDTH)
-	#define TFT_BOTTOM_HEIGHT (TFT_HEIGHT-TFT_TOP_HEIGHT)
-	#define TFT_TOP_X_POSITION (0)
-	#define TFT_TOP_Y_POSITION (0)
-	#define TFT_BOTTOM_X_POSITION (0)
-	#define TFT_BOTTOM_Y_POSITION (TFT_TOP_HEIGHT)
-	GFXcanvas1 tft_top(TFT_TOP_WIDTH, TFT_TOP_HEIGHT);
-	GFXcanvas1 tft_bottom(TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT);
-#else
-	#define LENGTH_OF_LINE (21)
-	#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
-	#define NUMBER_OF_LINES (8)
-	char line[NUMBER_OF_LINES][LENGTH_OF_LINE+1];
-	char paragraph[NUMBER_OF_LINES*LENGTH_OF_LINE+1];
-#endif
+#define LENGTH_OF_LINE (21)
+#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
+#define NUMBER_OF_LINES (8)
+char line[NUMBER_OF_LINES][LENGTH_OF_LINE+1];
+char paragraph[NUMBER_OF_LINES*LENGTH_OF_LINE+1];
 char sendpacket1[MAX_STRING_LENGTH-strlen(PREFIX)-strlen(SUFFIX)] = "nothing to see here";
 char sendpacket2[MAX_STRING_LENGTH] = "this is a dummy message";
 
@@ -440,63 +425,38 @@ void loop() {
 		if (EXTRA_WAIT<currentTime-pingPongTime) {
 			screenUpdateTime = millis();
 			//debug("start of screen update");
-			#ifdef USE_BLITTER
-				tft_top.fillScreen(ILI9341_BLACK);
-				tft_top.setCursor(0, 10);
-				tft_top.print("hAcc_mm: ");
-				tft_top.println(hAcc_mm);
-				tft_top.print("#uploads: ");
-				tft_top.println(total_number_of_uploads);
-				// could add fixType etc here...
-			#else
-				sprintf(line[0], "hAcc_mm: %u", hAcc_mm); //tft.println(line[0]);
-				sprintf(line[1], "vAcc_mm: %u", vAcc_mm); //tft.println(line[1]);
-				sprintf(line[2], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
-				//sprintf(line[5], "diffSoln: %d", diffSoln); //tft.println(line[5]);
-				//sprintf(line[], "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
-				sprintf(line[3], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
-				sprintf(line[4], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
-				//snprintf(line[], "height_mm: %d", height_mm); //tft.println(line[]);
-				sprintf(line[5], "#uploads: %d (%d)", total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
-				sprintf(line[6], "loraRSSI: %d (%d/%d)", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent); //tft.println(line[6]);
-				sprintf(line[7], "uptime: %'ld", (millis()-startTime)/1000);
-				//Serial.println(line[7]);
-				//debug("middle of screen update");
-				int k = 0;
-				for (int l=0; l<NUMBER_OF_LINES; l++) {
-					bool junk = false;
-					for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
-						if (0==line[l][j]) {
-							junk = true;
-						}
-						if (not junk) {
-							paragraph[k] = line[l][j];
-						} else {
-							paragraph[k] = 32;
-						}
+			sprintf(line[0], "hAcc_mm: %u", hAcc_mm); //tft.println(line[0]);
+			sprintf(line[1], "vAcc_mm: %u", vAcc_mm); //tft.println(line[1]);
+			sprintf(line[2], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
+			//sprintf(line[5], "diffSoln: %d", diffSoln); //tft.println(line[5]);
+			//sprintf(line[], "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
+			sprintf(line[3], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
+			sprintf(line[4], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
+			//snprintf(line[], "height_mm: %d", height_mm); //tft.println(line[]);
+			sprintf(line[5], "#uploads: %d (%d)", total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
+			sprintf(line[6], "loraRSSI: %d (%d/%d)", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent); //tft.println(line[6]);
+			sprintf(line[7], "uptime: %'ld", (millis()-startTime)/1000);
+			//Serial.println(line[7]);
+			//debug("middle of screen update");
+			int k = 0;
+			for (int l=0; l<NUMBER_OF_LINES; l++) {
+				bool junk = false;
+				for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
+					if (0==line[l][j]) {
+						junk = true;
+					}
+					if (not junk) {
+						paragraph[k] = line[l][j];
+					} else {
+						paragraph[k] = 32;
 					}
 				}
-				paragraph[k] = 0;
-				//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
-				//Serial.println(paragraph);
-				tft.setCursor(CURSOR_X, CURSOR_Y);
-				tft.println(paragraph);
-				//debug("almost done with screen update");
-			#endif
-			#ifdef USE_BLITTER
-				tft.drawLine(TFT_WIDTH-1, TFT_TOP_Y_POSITION, TFT_WIDTH-1, TFT_TOP_Y_POSITION+TFT_TOP_HEIGHT-1, ILI9341_WHITE);
-				//Serial.println("starting to copy top");
-				tft.drawBitmap(TFT_TOP_X_POSITION, TFT_TOP_Y_POSITION, tft_top.getBuffer(), TFT_TOP_WIDTH, TFT_TOP_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); // takes about 2 seconds
-				//Serial.println("done");
-				tft_bottom.fillScreen(ILI9341_BLACK);
-				tft_bottom.setCursor(0, 10);
-			#endif
-			#ifdef USE_BLITTER
-				tft.drawLine(TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION, TFT_WIDTH-1, TFT_BOTTOM_Y_POSITION+TFT_BOTTOM_HEIGHT-1, ILI9341_WHITE);
-				//Serial.println("starting to copy bottom");
-				tft.drawBitmap(TFT_BOTTOM_X_POSITION, TFT_BOTTOM_Y_POSITION, tft_bottom.getBuffer(), TFT_BOTTOM_WIDTH, TFT_BOTTOM_HEIGHT, ILI9341_WHITE, ILI9341_BLACK); //  takes about 7 seconds
-				//Serial.println("done");
-			#endif
+			}
+			paragraph[k] = 0;
+			//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
+			//Serial.println(paragraph);
+			tft.setCursor(CURSOR_X, CURSOR_Y);
+			tft.println(paragraph);
 			//debug("end of screen update");
 		}
 	} else if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
