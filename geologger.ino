@@ -29,7 +29,7 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
 #define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1000)
-#define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (1000)
+#define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (250)
 #define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
 #define MAX_UPLOADS (100)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
@@ -68,9 +68,9 @@ char message[MAX_STRING_LENGTH];
 	//#define RFM95_INT (10) // B = IRQ
 	//#define RFM95_CS   (5) // E = CS
 	//#define RFM95_RST  (6) // D = reset
-	#define RFM95_INT  (0) // IRQ not connected
-	#define RFM95_CS  (13) // GPIO13 = CS
-	#define RFM95_RST  (8) // F = GPIO8 = reset
+	#define RFM95_INT (12) // GPIO12 = D12 = IRQ
+	#define RFM95_CS  (13) // GPIO13 = D13 = CS
+	#define RFM95_RST  (8) // F = GPIO8 = A5 = reset
 #endif
 #define LORA_FREQ (905.0)
 RH_RF95 lora(RFM95_CS, RFM95_INT);
@@ -274,6 +274,14 @@ void setup() {
 	#endif
 	tft.setTextSize(2);
 	//tft.println("tft initialized");
+	#ifdef USE_LORA
+		setup_lora();
+		if (lora_is_available) {
+			//send_lora_string("coming online"); // "node4[1] coming online"
+			//send_lora_string("ed209");
+			//send_lora_string("robo");
+		}
+	#endif
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		sprintf(paragraph, "GPS not found");
@@ -283,11 +291,11 @@ void setup() {
 	sprintf(paragraph, "GPS connected");
 	Serial.println(paragraph); tft.println(paragraph);
 	myGNSS.setI2COutput(COM_TYPE_UBX | COM_TYPE_NMEA); //Set the I2C port to output both NMEA and UBX messages
-	myGNSS.setPortInput(COM_PORT_I2C, COM_TYPE_UBX | COM_TYPE_NMEA | COM_TYPE_RTCM3); //Be sure RTCM3 input is enabled. UBX + RTCM3 is not a valid state.
+	//myGNSS.setPortInput(COM_PORT_I2C, COM_TYPE_UBX | COM_TYPE_NMEA | COM_TYPE_RTCM3); // Be sure RTCM3 input is enabled when using ntrip caster over wifi. UBX + RTCM3 is not a valid state.
+	myGNSS.setPortInput(COM_PORT_I2C, COM_TYPE_UBX | COM_TYPE_NMEA); // UBX + RTCM3 is not a valid state.
 	myGNSS.setDGNSSConfiguration(SFE_UBLOX_DGNSS_MODE_FIXED); // Set the differential mode - ambiguities are fixed whenever possible
-	myGNSS.setNavigationFrequency(1); //Set output in Hz.
-	// Set the Main Talker ID to "GP". The NMEA GGA messages will be GPGGA instead of GNGGA
-	myGNSS.setMainTalkerID(SFE_UBLOX_MAIN_TALKER_ID_GP);
+	myGNSS.setNavigationFrequency(4); //Set output in Hz.
+	myGNSS.setMainTalkerID(SFE_UBLOX_MAIN_TALKER_ID_GP); // Set the Main Talker ID to "GP". The NMEA GGA messages will be GPGGA instead of GNGGA
 	myGNSS.enableNMEAMessage(UBX_NMEA_GGA, COM_PORT_I2C, 10); // Tell the module to output GGA every 10 seconds
 	myGNSS.setAutoPVTcallbackPtr(&printPVTdata); // Enable automatic NAV PVT messages with callback to printPVTdata so we can watch the carrier solution go to fixed
 	// from Example8_GetSetPortSettings:
@@ -319,14 +327,6 @@ void setup() {
 	while (Serial.available()) { // Empty the serial buffer
 		Serial.read();
 	}
-	#ifdef USE_LORA
-		setup_lora();
-		if (lora_is_available) {
-			send_lora_string("coming online"); // "node4[1] coming online"
-			//send_lora_string("ed209");
-			//send_lora_string("robo");
-		}
-	#endif
 	pinMode(BUTTON1, INPUT_PULLDOWN);
 	pinMode(BUTTON2, INPUT_PULLDOWN);
 	previous_button1 = digitalRead(BUTTON1);
@@ -384,7 +384,7 @@ void loop() {
 		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
 			if (lora_is_available) {
 				send_lora_ping();
-				//get_lora_pong();
+				get_lora_pong();
 				pingPongTime = millis();
 				should_do_a_lora_pingpong = false;
 				if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
@@ -741,11 +741,10 @@ void send_lora_ping(void) {
 }
 
 void get_lora_pong(void) {
-	//debug("get_lora_pong()");
+	debug("get_lora_pong(waitPacketSent)");
 	lora.waitPacketSent(); // wait for the previous thing to finish sending
-	//debug("get_lora_pong(waitPacketSent)");
 	if (lora.waitAvailableTimeout(500)) { // only waits the full time if there's nothing
-		//debug("get_lora_pong(waitAvailableTimeout())");
+		debug("get_lora_pong(waitAvailableTimeout())");
 		uint8_t len = MAX_STRING_LENGTH;
 		lora.recv(recvpacket, &len);
 		//debug("get_lora_pong(recv)");
