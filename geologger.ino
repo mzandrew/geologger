@@ -264,10 +264,6 @@ void setup() {
 	Serial.println(paragraph); //tft.println(paragraph);
 	sprintf(paragraph, "startTime: %ld", startTime);
 	Serial.println(paragraph); //tft.println(paragraph);
-	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
-		Wire.setPins(SDA1, SCL1);
-	#endif
-	//uint8_t x;
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 		pinMode(TFT_I2C_POWER, OUTPUT);
 		digitalWrite(TFT_I2C_POWER, HIGH);
