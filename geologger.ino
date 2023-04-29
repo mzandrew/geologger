@@ -29,9 +29,10 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
 #define JUNK_RSSI (-151)
 #define LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS (1000)
-#define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (250)
+#define NAVIGATION_FREQUENCY_HZ (5)
+#define SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS (1000/NAVIGATION_FREQUENCY_HZ)
 #define UPLOAD_TIMEOUT_IN_MILLISECONDS (6000)
-#define MAX_UPLOADS (100)
+#define MAX_UPLOADS (99)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
 #define POST_LORA_RSSI_DATA_OVER_LORA
@@ -56,7 +57,10 @@ unsigned long uploadTime = 0;
 const char PREFIX[]="SCOOPY";
 const char SUFFIX[]="BOOPS";
 uint8_t recvpacket[MAX_STRING_LENGTH];
-char message[MAX_STRING_LENGTH];
+char received_message[MAX_STRING_LENGTH];
+char sendpacket1[MAX_STRING_LENGTH-strlen(PREFIX)-strlen(SUFFIX)] = "nothing to see here";
+char sendpacket2[MAX_STRING_LENGTH] = "this is a dummy message";
+char sendpacket3[MAX_STRING_LENGTH];
 
 #ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
 	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
@@ -99,10 +103,8 @@ unsigned long previous_button2_change_time = 0;
 #define LENGTH_OF_LINE (21)
 #define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
 #define NUMBER_OF_LINES (8)
-char line[NUMBER_OF_LINES][LENGTH_OF_LINE+1];
+char line[NUMBER_OF_LINES][LENGTH_OF_LINE+5];
 char paragraph[NUMBER_OF_LINES*LENGTH_OF_LINE+1];
-char sendpacket1[MAX_STRING_LENGTH-strlen(PREFIX)-strlen(SUFFIX)] = "nothing to see here";
-char sendpacket2[MAX_STRING_LENGTH] = "this is a dummy message";
 
 uint8_t fixType = 0;
 String fixTypeString[] = { "none", "dead_reck", "2d", "3d", "gnss+dead_reck", "time_only", "unknown" };
@@ -148,7 +150,6 @@ uint32_t total_number_of_pongs_received = 0;
 //        |                 |              |
 
 void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
-	//debug("printPVTdata()");
 	year = ubxDataStruct->year;
 	month = ubxDataStruct->month;
 	day = ubxDataStruct->day;
@@ -160,54 +161,27 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 		current_minute = minute;
 	}
 	double latitude = ubxDataStruct->lat; // Print the latitude
-	Serial.print(F("Lat: "));
-	Serial.print(latitude / 10000000.0, 7);
 	double longitude = ubxDataStruct->lon; // Print the longitude
-	Serial.print(F(" Long: "));
-	Serial.print(longitude / 10000000.0, 7);
 	double altitude = ubxDataStruct->hMSL; // Print the height above mean sea level
-	Serial.print(F(" Height: "));
-	Serial.print(altitude / 1000.0, 3);
 	fixType = ubxDataStruct->fixType; // Print the fix type
 	if (MAX_VALID_FIXTYPE<fixType) {
 		fixType = MAX_VALID_FIXTYPE;
 	}
-	Serial.print(F(" Fix: "));
-	Serial.print(fixType);
-	Serial.print(" ");
-	Serial.print(fixTypeString[fixType]);
 	carrSoln = ubxDataStruct->flags.bits.carrSoln; // Print the carrier solution
 	if (MAX_VALID_CARRSOLN<carrSoln) {
 		fixType = MAX_VALID_CARRSOLN;
 	}
-	Serial.print(" carrSoln: ");
-	Serial.print(carrSoln);
-	Serial.print(" ");
-	Serial.print(carrSolnString[carrSoln]);
 	hAcc_mm = ubxDataStruct->hAcc; // Print the horizontal accuracy estimate
-	Serial.print(" hAcc_mm: ");
-	Serial.print(hAcc_mm);
-	Serial.print(F(" (mm)"));
 	diffSoln = ubxDataStruct->flags.bits.diffSoln; // 1 = differential corrections were applied
-	Serial.print(" diffSoln: ");
-	Serial.print(diffSoln);
 	numSV = ubxDataStruct->numSV;  // Number of satellites used in Nav Solution
-	Serial.print(" numSV: ");
-	Serial.print(numSV);
 	pDOP = ubxDataStruct->pDOP;  // Position DOP * 0.01
-	Serial.print(" pDOP: ");
-	Serial.print(pDOP);
 	height_mm = ubxDataStruct->height; // Height above ellipsoid: mm
-	Serial.print(" height_mm: ");
-	Serial.print(height_mm);
 	vAcc_mm = ubxDataStruct->vAcc;  // Vertical accuracy estimate: mm
-	Serial.print(" vAcc_mm: ");
-	Serial.print(vAcc_mm);
-	Serial.println();
+	sprintf(paragraph, "Lat: %.7f Long: %.7f Height: %.3f numSv: %d Fix: %d %s carrSoln: %d %s diffSoln: %d hAcc_mm: %d vAcc_mm: %d", latitude / 10000000.0, longitude / 10000000.0, altitude / 1000.0, numSV, fixType, fixTypeString[fixType].c_str(), carrSoln, carrSolnString[carrSoln].c_str(), diffSoln, hAcc_mm, vAcc_mm);
+	Serial.println(paragraph);
 	lat = latitude / 10000000.0;
 	lon = longitude / 10000000.0;
 	ele = altitude / 1000.0;
-	//debug("printPVTdata(return)");
 }
 
 void debug2(const char *message) {
@@ -273,7 +247,6 @@ void setup() {
 		tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 	#endif
 	tft.setTextSize(2);
-	//tft.println("tft initialized");
 	#ifdef USE_LORA
 		setup_lora();
 		if (lora_is_available) {
@@ -294,7 +267,7 @@ void setup() {
 	//myGNSS.setPortInput(COM_PORT_I2C, COM_TYPE_UBX | COM_TYPE_NMEA | COM_TYPE_RTCM3); // Be sure RTCM3 input is enabled when using ntrip caster over wifi. UBX + RTCM3 is not a valid state.
 	myGNSS.setPortInput(COM_PORT_I2C, COM_TYPE_UBX | COM_TYPE_NMEA); // UBX + RTCM3 is not a valid state.
 	myGNSS.setDGNSSConfiguration(SFE_UBLOX_DGNSS_MODE_FIXED); // Set the differential mode - ambiguities are fixed whenever possible
-	myGNSS.setNavigationFrequency(4); //Set output in Hz.
+	myGNSS.setNavigationFrequency(NAVIGATION_FREQUENCY_HZ); //Set output in Hz.
 	myGNSS.setMainTalkerID(SFE_UBLOX_MAIN_TALKER_ID_GP); // Set the Main Talker ID to "GP". The NMEA GGA messages will be GPGGA instead of GNGGA
 	myGNSS.enableNMEAMessage(UBX_NMEA_GGA, COM_PORT_I2C, 10); // Tell the module to output GGA every 10 seconds
 	myGNSS.setAutoPVTcallbackPtr(&printPVTdata); // Enable automatic NAV PVT messages with callback to printPVTdata so we can watch the carrier solution go to fixed
@@ -394,7 +367,6 @@ void loop() {
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
 		screenUpdateTime = millis();
-		//debug("start of screen update");
 		sprintf(line[0], "hAcc_mm: %u", hAcc_mm); //tft.println(line[0]);
 		sprintf(line[1], "vAcc_mm: %u", vAcc_mm); //tft.println(line[1]);
 		sprintf(line[2], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
@@ -403,11 +375,9 @@ void loop() {
 		sprintf(line[3], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
 		sprintf(line[4], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
 		//snprintf(line[], "height_mm: %d", height_mm); //tft.println(line[]);
-		sprintf(line[5], "#uploads: %d (%d)", total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
-		sprintf(line[6], "loraRSSI: %d (%d/%d)", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent); //tft.println(line[6]);
+		sprintf(line[5], "p/p u/m: %d/%d %d/%d", total_number_of_pongs_received, total_number_of_pings_sent, total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
+		sprintf(line[6], "last loraRSSI: %d", lora_rssi_ping); //tft.println(line[6]);
 		sprintf(line[7], "uptime: %'ld", (millis()-startTime)/1000);
-		//Serial.println(line[7]);
-		//debug("middle of screen update");
 		int k = 0;
 		for (int l=0; l<NUMBER_OF_LINES; l++) {
 			bool junk = false;
@@ -427,10 +397,8 @@ void loop() {
 		//Serial.println(paragraph);
 		tft.setCursor(CURSOR_X, CURSOR_Y);
 		tft.print(paragraph);
-		//debug("end of screen update");
 	} else if (UPLOAD_TIMEOUT_IN_MILLISECONDS<=currentTime-uploadTime) {
 		if (should_do_an_upload) {
-			//debug("start of upload");
 			bool okay_to_upload = false;
 			if (total_number_of_uploads<MAX_UPLOADS) {
 				if (number_of_uploads_for_the_current_minute<MAX_UPLOAD_RATE_PER_MINUTE) {
@@ -480,7 +448,6 @@ void loop() {
 				#endif
 			}
 		}
-		//debug("end of upload");
 	}
 	delay(1);
 	count++;
@@ -530,37 +497,33 @@ bool send_lora_string(const char *string) {
 		warning("send_lora_string is too long");
 		packet_length = MAX_STRING_LENGTH;
 	}
-	debug("send_lora_string(waitPacketSent)"); // sometimes it hangs after this line
+	//debug("send_lora_string(waitPacketSent)"); // sometimes it hangs after this line
 	lora.waitPacketSent(); // wait for the previous thing to finish sending
 	//delay(100);
-	debug("send_lora_string(send)"); // other times it hangs after this line
+	//debug("send_lora_string(send)"); // other times it hangs after this line
 	lora.send((uint8_t*) sendpacket2, packet_length); // returns immediately, but message takes another 70 ms to get sent
-	debug("send_lora_string(return)");
+	//debug("send_lora_string(return)");
 	return true;
 }
 
 bool send_lora_float_with_location(float value, float latitude, float longitude, float elevation, const char *string) {
-	char sendpacket[MAX_STRING_LENGTH];
-	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%f,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
-	return send_lora_string(sendpacket);
+	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%f,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
+	return send_lora_string(sendpacket3);
 }
 
 bool send_lora_int_with_location(int value, float latitude, float longitude, float elevation, const char *string) {
-	char sendpacket[MAX_STRING_LENGTH];
-	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%d,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
-	return send_lora_string(sendpacket);
+	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%d,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
+	return send_lora_string(sendpacket3);
 }
 
 bool send_lora_float(float value, const char *string) {
-	char sendpacket[MAX_STRING_LENGTH];
-	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%f]", string, value);
-	return send_lora_string(sendpacket);
+	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%f]", string, value);
+	return send_lora_string(sendpacket3);
 }
 
 bool send_lora_int(int value, const char *string) {
-	char sendpacket[MAX_STRING_LENGTH];
-	snprintf(sendpacket, MAX_STRING_LENGTH, "%s [%d]", string, value);
-	return send_lora_string(sendpacket);
+	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%d]", string, value);
+	return send_lora_string(sendpacket3);
 }
 
 int get_lora_rssi(void) {
@@ -664,8 +627,8 @@ next2:
 		return false;
 	}
 	i++;
-	strncpy(message, raw_message+i, len-s-i);
-	message[len-s-i] = 0;
+	strncpy(received_message, raw_message+i, len-s-i);
+	received_message[len-s-i] = 0;
 	//Serial.print("remaining message: ");
 	//Serial.println(message);
 	//debug("parse_lora_raw(return)");
@@ -676,11 +639,11 @@ bool parse_lora_message(const char *string) {
 	//debug("parse_lora_message()");
 	// "pong rssi=-101"
 	int string_len = strlen(string);
-	int len = strnlen(message, MAX_STRING_LENGTH);
+	int len = strnlen(received_message, MAX_STRING_LENGTH);
 	int i = 0;
 	int j = 0;
 	for (i=0; i<len && j<string_len; i++, j++) {
-		if (message[i]!=string[j]) {
+		if (received_message[i]!=string[j]) {
 			Serial.print("message does not match ");
 			Serial.print(string);
 			Serial.print(" at index ");
@@ -693,7 +656,7 @@ bool parse_lora_message(const char *string) {
 	const char RSSI[] = " rssi=-";
 	string_len = strlen(RSSI);
 	for (j=0; i<len && j<string_len; i++, j++) {
-		if (message[i]!=RSSI[j]) {
+		if (received_message[i]!=RSSI[j]) {
 			Serial.print("message does not match \" rssi=-\" at index ");
 			Serial.print(i);
 			Serial.print(",");
@@ -705,7 +668,7 @@ bool parse_lora_message(const char *string) {
 	for (; i<len; i++) {
 		bool match = false;
 		for (j=0; j<10; j++) {
-			if (message[i]=='0'+j) {
+			if (received_message[i]=='0'+j) {
 				match = true;
 			}
 		}
@@ -717,7 +680,7 @@ bool parse_lora_message(const char *string) {
 	}
 	int index_b = i;
 	char numeric_string[MAX_STRING_LENGTH];
-	strncpy(numeric_string, message+index_a, index_b-index_a);
+	strncpy(numeric_string, received_message+index_a, index_b-index_a);
 	numeric_string[index_b-index_a] = 0;
 	lora_rssi_ping = -atoi(numeric_string);
 	total_number_of_pongs_received++;
@@ -741,10 +704,10 @@ void send_lora_ping(void) {
 }
 
 void get_lora_pong(void) {
-	debug("get_lora_pong(waitPacketSent)");
+	//debug("get_lora_pong(waitPacketSent)");
 	lora.waitPacketSent(); // wait for the previous thing to finish sending
 	if (lora.waitAvailableTimeout(500)) { // only waits the full time if there's nothing
-		debug("get_lora_pong(waitAvailableTimeout())");
+		//debug("get_lora_pong(waitAvailableTimeout())");
 		uint8_t len = MAX_STRING_LENGTH;
 		lora.recv(recvpacket, &len);
 		//debug("get_lora_pong(recv)");
@@ -753,13 +716,13 @@ void get_lora_pong(void) {
 			if (parse_lora_raw((const char *) recvpacket)) {
 				if (parse_lora_message("pong")) {
 					Serial.print("response: ");
-					Serial.println(message);
+					Serial.println(received_message);
 					lora_rssi_pong = lora.lastRssi();
 					//Serial.print("response rssi: ");
 					//Serial.println(lora_rssi_pong);
 				} else {
 					Serial.print("response was not pong: \"");
-					Serial.print(message);
+					Serial.print(received_message);
 					Serial.println("\"");
 				}
 			}
