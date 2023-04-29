@@ -247,12 +247,12 @@ void error(const char *message) {
 void setup() {
 	startTime = millis();
 	Serial.begin(115200);
-	delay(4000);
-	Serial.println("----------------------------------------------------------");
-	sprintf(paragraph, "geologger");
-	Serial.println(paragraph); //tft.println(paragraph);
-	sprintf(paragraph, "startTime: %ld", startTime);
-	Serial.println(paragraph); //tft.println(paragraph);
+//	delay(4000);
+//	Serial.println("----------------------------------------------------------");
+//	sprintf(paragraph, "geologger");
+//	Serial.println(paragraph); //tft.println(paragraph);
+//	sprintf(paragraph, "startTime: %ld", startTime);
+//	Serial.println(paragraph); //tft.println(paragraph);
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 		pinMode(RFM95_RST, OUTPUT);
 		digitalWrite(RFM95_RST, LOW);
