@@ -6,7 +6,7 @@
 // more from adafruitio_secure_esp32
 // https://learn.adafruit.com/adafruit-io/mqtt-api
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2023-01-02 by mza
+// last updated 2023-04-29 by mza
 
 uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define RSSI_THRESHOLD (-150)
@@ -69,6 +69,9 @@ char message[MAX_STRING_LENGTH];
 #ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
 	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
 #endif
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_REVTFT
+	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
+#endif
 #ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_OR_TFT
 	//#define RFM95_INT (10) // B = IRQ
 	//#define RFM95_CS   (5) // E = CS
@@ -76,6 +79,12 @@ char message[MAX_STRING_LENGTH];
 	#define RFM95_INT (12) // GPIO12 = IRQ
 	#define RFM95_CS  (13) // GPIO13 = CS
 	#define RFM95_RST  (8) // F = GPIO8 = reset
+#endif
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
+	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
+#endif
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_REVTFT
+	#define ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 #endif
 #define LORA_FREQ (905.0)
 RH_RF95 lora(RFM95_CS, RFM95_INT);
@@ -142,7 +151,7 @@ unsigned long previous_button2_change_time = 0;
 	#define TFT_WIDTH  (240)
 	#define TFT_HEIGHT (320)
 #endif
-#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
+#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 	#include <Adafruit_ST7789.h>
 	Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
 	#define TFT_WIDTH  (240)
@@ -168,10 +177,11 @@ unsigned long previous_button2_change_time = 0;
 	#define LENGTH_OF_LINE (21)
 	#define LENGTH_OF_SSID (LENGTH_OF_LINE-4)
 	#define NUMBER_OF_LINES (8)
-	char line[NUMBER_OF_LINES][LENGTH_OF_LINE];
-	const char blanks[] = "                    ";
-	char paragraph[NUMBER_OF_LINES*LENGTH_OF_LINE];
+	char line[NUMBER_OF_LINES][LENGTH_OF_LINE+1];
+	char paragraph[NUMBER_OF_LINES*LENGTH_OF_LINE+1];
 #endif
+char sendpacket1[MAX_STRING_LENGTH-strlen(PREFIX)-strlen(SUFFIX)] = "nothing to see here";
+char sendpacket2[MAX_STRING_LENGTH] = "this is a dummy message";
 
 //#include "AdafruitIO_WiFi.h"
 //AdafruitIO_WiFi io(user, key, ssid, password);
@@ -463,23 +473,25 @@ void error(const char *message) {
 void setup() {
 	startTime = millis();
 	Serial.begin(115200);
-	delay(1500);
+	delay(4000);
 	Serial.println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
-	Serial.println("geologger");
-	Serial.print("startTime: ");
-	Serial.println(startTime);
+	sprintf(paragraph, "geologger");
+	Serial.println(paragraph); //tft.println(paragraph);
+	sprintf(paragraph, "startTime: %ld", startTime);
+	Serial.println(paragraph); //tft.println(paragraph);
+	delay(1000);
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
 	#endif
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
 		#define PIN_I2C_POWER (7)
 		pinMode(PIN_I2C_POWER, INPUT);
-		delay(1);
+		delay(100);
 		bool polarity = digitalRead(PIN_I2C_POWER);
 		pinMode(PIN_I2C_POWER, OUTPUT);
 		digitalWrite(PIN_I2C_POWER, !polarity);
 	#endif
-	uint8_t x;
+	//uint8_t x;
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
 		tft.begin();
 		check_tft();
@@ -494,7 +506,7 @@ void setup() {
 		tft.fillScreen(ILI9341_BLACK);
 		tft.setTextColor(ILI9341_WHITE, ILI9341_BLACK);
 	#endif
-	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
+	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 		pinMode(TFT_I2C_POWER, OUTPUT);
 		digitalWrite(TFT_I2C_POWER, HIGH);
 		delay(100);
@@ -509,13 +521,16 @@ void setup() {
 	#endif
 	tft.setTextSize(2);
 	//tft.println("tft initialized");
+	delay(2000);
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
-		Serial.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
-		tft.println(F("u-blox GPS not detected at default I2C address. Please check wiring."));
+		sprintf(paragraph, "GPS not found");
+		Serial.println(paragraph); tft.println(paragraph);
 		delay(2000);
 	}
-	Serial.println(F("u-blox module connected"));
+	sprintf(paragraph, "GPS connected");
+	Serial.println(paragraph); tft.println(paragraph);
+	delay(1000);
 	myGNSS.setI2COutput(COM_TYPE_UBX | COM_TYPE_NMEA); //Set the I2C port to output both NMEA and UBX messages
 	myGNSS.setPortInput(COM_PORT_I2C, COM_TYPE_UBX | COM_TYPE_NMEA | COM_TYPE_RTCM3); //Be sure RTCM3 input is enabled. UBX + RTCM3 is not a valid state.
 	myGNSS.setDGNSSConfiguration(SFE_UBLOX_DGNSS_MODE_FIXED); // Set the differential mode - ambiguities are fixed whenever possible
@@ -528,40 +543,48 @@ void setup() {
 	// from Example8_GetSetPortSettings:
 	bool response;
 	uint32_t currentUART2Baud = myGNSS.getVal32(UBLOX_CFG_UART2_BAUDRATE);
-	Serial.print("currentUART2Baud: ");
-	Serial.println(currentUART2Baud);
+	sprintf(paragraph, "UART2Baud: %d", currentUART2Baud);
+	Serial.println(paragraph); tft.println(paragraph);
+	delay(1000);
 	if (currentUART2Baud != 57600) {
 		response = myGNSS.setVal32(UBLOX_CFG_UART2_BAUDRATE, 57600);
 		if (response == false) {
-			Serial.println("SetVal failed");
+			sprintf(paragraph, "set baudrate fail");
 		} else {
-			Serial.println("SetVal succeeded");
+			sprintf(paragraph, "set baudrate okay");
 		}
+		Serial.println(paragraph); tft.println(paragraph);
 //	} else {
 //		Serial.println("No baud change needed");
 	}
-	Serial.print("enabling uart2 RTCM3 input: ");
+	delay(1000);
+	sprintf(paragraph, "enable uart2 RTCM3");
+	Serial.println(paragraph); tft.println(paragraph);
+	delay(1000);
 	response = myGNSS.setVal8(UBLOX_CFG_UART2INPROT_RTCM3X, 1); // Enable RTCM on UART2 Input
 	if (response == false) {
-		Serial.println("SetVal failed");
+		sprintf(paragraph, "uart2/RTCM3 fail");
 	} else {
-		Serial.println("SetVal succeeded");
+		sprintf(paragraph, "uart2/RTCM3 okay");
 	}
+	Serial.println(paragraph); tft.println(paragraph);
+	delay(1000);
 	//myGNSS.saveConfiguration(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_MSGCONF); //Optional: Save the ioPort and message settings to NVM
 	#ifdef CONNECT_TO_WIFI_NETWORK
 	client.setCACert(adafruitio_root_ca); // Set Adafruit IO's root CA
 	bool keepTrying = true;
+	sprintf(paragraph, "Connecting to WiFi");
 	while (keepTrying) {
-		Serial.println(F("Connecting to WiFi..."));
-		tft.println(F("Connecting to WiFi..."));
-		unsigned long startTime = millis();
-		unsigned long startTime = millis();
+		Serial.println(paragraph); tft.println(paragraph);
+		delay(1000);
+		unsigned long begin_time = millis();
 		WiFi.begin(ssid, password);
-		while ((WiFi.status() != WL_CONNECTED) && (millis() < (startTime + 10000))) { // Timeout after 10 seconds
-			delay(500);
+		while ((WiFi.status() != WL_CONNECTED) && (millis() < (begin_time + 10000))) { // Timeout after 10 seconds
+			delay(1000);
 			Serial.print(F("."));
 		}
 		Serial.println();
+		delay(1000);
 		if (WiFi.status() == WL_CONNECTED) {
 			keepTrying = false; // Connected!
 		} else {
@@ -569,10 +592,9 @@ void setup() {
 			WiFi.mode(WIFI_OFF);
 		}
 	}
-	Serial.print(F("WiFi connected with IP: "));
-	Serial.println(WiFi.localIP());
-	tft.print(F("WiFi connected with IP: "));
-	tft.println(WiFi.localIP());
+	sprintf(paragraph, "IP: %s", WiFi.localIP());
+	Serial.println(paragraph); tft.println(paragraph);
+	delay(1000);
 	#endif
 	while (Serial.available()) { // Empty the serial buffer
 		Serial.read();
@@ -582,9 +604,11 @@ void setup() {
 	#endif
 	#ifdef USE_LORA
 		setup_lora();
-//		if (lora_is_available) {
-//			send_lora_string("coming online");
-//		}
+		if (lora_is_available) {
+			send_lora_string("coming online"); // "node4[1] coming online"
+			//send_lora_string("ed209");
+			//send_lora_string("robo");
+		}
 	#endif
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2
 		check_tft();
@@ -594,7 +618,7 @@ void setup() {
 	//delay(1000);
 	#ifdef USE_LORA
 		if (lora_is_available) {
-			flush_lora();
+//			flush_lora(); // this makes it less stable
 		}
 	#endif
 	pinMode(BUTTON1, INPUT_PULLDOWN);
@@ -660,9 +684,9 @@ void loop() {
 	static states state = open_connection;
 	//=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
 	switch (state) {
+		sprintf(paragraph, "Connect to NTRIP caster");
 		case open_connection:
-			Serial.println(F("Connecting to the NTRIP caster..."));
-			tft.println(F("Connecting to the NTRIP caster..."));
+			Serial.println(paragraph); tft.println(paragraph);
 			if (beginClient()) { // Try to open the connection to the caster
 				Serial.println(F("Connected to the NTRIP caster! Press any key to disconnect..."));
 				state = push_data_and_wait_for_keypress; // Move on
@@ -712,7 +736,7 @@ void loop() {
 			if (lora_is_available) {
 				if (EXTRA_WAIT<currentTime-screenUpdateTime) {
 					send_lora_ping();
-					get_lora_pong();
+					//get_lora_pong();
 					pingPongTime = millis();
 					should_do_a_lora_pingpong = false;
 					if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
@@ -737,27 +761,36 @@ void loop() {
 				tft_top.println(total_number_of_uploads);
 				// could add fixType etc here...
 			#else
-				snprintf(line[0], LENGTH_OF_LINE, "hAcc_mm: %u%s", hAcc_mm, blanks); //tft.println(line[0]);
-				snprintf(line[1], LENGTH_OF_LINE, "vAcc_mm: %u%s", vAcc_mm, blanks); //tft.println(line[1]);
-				snprintf(line[2], LENGTH_OF_LINE, "numSV: %d %c%s", numSV, diffSoln?'d':' ', blanks); //tft.println(line[2]);
-				//snprintf(line[5], LENGTH_OF_LINE, "diffSoln: %d%s", diffSoln, blanks); //tft.println(line[5]);
-				//snprintf(line[], LENGTH_OF_LINE, "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
-				snprintf(line[3], LENGTH_OF_LINE, "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
-				snprintf(line[4], LENGTH_OF_LINE, "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
-				//snprintf(line[], LENGTH_OF_LINE, "height_mm: %d%s", height_mm, blanks); //tft.println(line[]);
-				snprintf(line[5], LENGTH_OF_LINE, "#uploads: %d (%d)%s", total_number_of_uploads, number_of_uploads_for_the_current_minute, blanks); //tft.println(line[5]);
-				snprintf(line[6], LENGTH_OF_LINE, "loraRSSI: %d (%d/%d)%s", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent, blanks); //tft.println(line[6]);
-				snprintf(line[7], LENGTH_OF_LINE, "uptime: %'d%s", (millis()-startTime)/1000, blanks);
+				sprintf(line[0], "hAcc_mm: %u", hAcc_mm); //tft.println(line[0]);
+				sprintf(line[1], "vAcc_mm: %u", vAcc_mm); //tft.println(line[1]);
+				sprintf(line[2], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
+				//sprintf(line[5], "diffSoln: %d", diffSoln); //tft.println(line[5]);
+				//sprintf(line[], "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
+				sprintf(line[3], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
+				sprintf(line[4], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
+				//snprintf(line[], "height_mm: %d", height_mm); //tft.println(line[]);
+				sprintf(line[5], "#uploads: %d (%d)", total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
+				sprintf(line[6], "loraRSSI: %d (%d/%d)", lora_rssi_ping, total_number_of_pongs_received, total_number_of_pings_sent); //tft.println(line[6]);
+				sprintf(line[7], "uptime: %'ld", (millis()-startTime)/1000);
 				//Serial.println(line[7]);
 				//debug("middle of screen update");
 				int k = 0;
 				for (int l=0; l<NUMBER_OF_LINES; l++) {
+					bool junk = false;
 					for (int j=0; j<LENGTH_OF_LINE-1; j++, k++) {
-						paragraph[k] = line[l][j];
+						if (0==line[l][j]) {
+							junk = true;
+						}
+						if (not junk) {
+							paragraph[k] = line[l][j];
+						} else {
+							paragraph[k] = 32;
+						}
 					}
 				}
 				paragraph[k] = 0;
 				//Serial.println(strnlen(paragraph, NUMBER_OF_LINES*LENGTH_OF_LINE));
+				//Serial.println(paragraph);
 				tft.setCursor(CURSOR_X, CURSOR_Y);
 				tft.println(paragraph);
 				//debug("almost done with screen update");
@@ -939,8 +972,8 @@ bool beginClient() {
 			snprintf(credentials, sizeof(credentials), "Authorization: Basic %s\r\n", encodedCredentials);
 		}
 		// Add the encoded credentials to the server request
-		strncat(serverRequest, credentials, SERVER_BUFFER_SIZE);
-		strncat(serverRequest, "\r\n", SERVER_BUFFER_SIZE);
+		strncat(serverRequest, credentials, SERVER_BUFFER_SIZE-3);
+		strncat(serverRequest, "\r\n", 3);
 		Serial.print(F("serverRequest size: "));
 		Serial.print(strlen(serverRequest));
 		Serial.print(F(" of "));
@@ -951,9 +984,9 @@ bool beginClient() {
 		Serial.println(serverRequest);
 		ntripClient.write(serverRequest, strlen(serverRequest));
 		//Wait up to 5 seconds for response
-		unsigned long startTime = millis();
+		unsigned long begin_time = millis();
 		while (ntripClient.available() == 0) {
-			if (millis() > (startTime + 5000)) {
+			if (millis() > (begin_time + 5000)) {
 				Serial.println(F("Caster timed out!"));
 				ntripClient.stop();
 				return (false);
@@ -1067,26 +1100,32 @@ bool check_tft(void) {
 #ifdef USE_LORA
 
 bool setup_lora(void) {
+	delay(2000);
 	if (!lora.init()) {
-		Serial.println("LoRa init failed");
-		tft.println("LoRa init failed");
+		delay(1000);
+		sprintf(paragraph, "LoRa init failed");
+		Serial.println(paragraph); tft.println(paragraph);
 	} else {
-		Serial.println("LoRa init OK!");
-		tft.println("LoRa init OK!");
+		delay(1000);
+		sprintf(paragraph, "LoRa init OK!");
+		Serial.println(paragraph); tft.println(paragraph);
+		delay(1000);
 		if (!lora.setFrequency(LORA_FREQ)) {
-			Serial.println("LoRa set frequency failed");
-			tft.println("LoRa set frequency failed");
+			sprintf(paragraph, "LoRa set freq failed");
+			Serial.println(paragraph); tft.println(paragraph);
 		} else {
-			Serial.println("LoRa set frequency OK!");
-			tft.println("LoRa set frequency OK!");
+			sprintf(paragraph, "LoRa set freq OK!");
+			Serial.println(paragraph); tft.println(paragraph);
 		}
-		Serial.print("LoRa freq: "); Serial.print(LORA_FREQ); Serial.println(" MHz");
-		tft.print("LoRa freq: "); tft.print(LORA_FREQ); tft.println(" MHz");
+		sprintf(paragraph, "LoRa freq: %.1f MHz", LORA_FREQ);
+		Serial.println(paragraph); tft.print(paragraph);
+		delay(1000);
 		lora.setTxPower(LORA_TX_POWER, false);
 		//int tx_power_dbm = lora.getTxPower();
 		int tx_power_dbm = LORA_TX_POWER;
-		Serial.print("LoRa tx power: "); Serial.print(tx_power_dbm); Serial.println(" dBm");
-		tft.print("LoRa tx power: "); tft.print(tx_power_dbm); tft.println(" dBm");
+		sprintf(paragraph, "LoRa TXpower: %d dBm", tx_power_dbm);
+		Serial.println(paragraph); tft.print(paragraph);
+		delay(1000);
 		lora_is_available = true;
 	}
 	return lora_is_available;
@@ -1100,20 +1139,26 @@ bool setup_lora(void) {
 
 bool send_lora_string(const char *string) {
 	static unsigned messageid = 1;
-	char sendpacket1[MAX_STRING_LENGTH];
-	snprintf(sendpacket1, MAX_STRING_LENGTH, "node%d[%d] %s", NODEID, messageid++, string);
+	if (MAX_STRING_LENGTH<strlen(string)+9) {
+		warning("send_lora_string is too long");
+	}
+	sprintf(sendpacket1, "node%d[%d] %s", NODEID, messageid++, string);
+	if (MAX_STRING_LENGTH<strlen(sendpacket1)) {
+		warning("send_lora_string is too long");
+	}
 	Serial.print("sending over lora: "); Serial.println(sendpacket1);
-	char sendpacket2[MAX_STRING_LENGTH];
-	snprintf(sendpacket2, MAX_STRING_LENGTH, "%s%s%s", PREFIX, sendpacket1, SUFFIX);
+	sprintf(sendpacket2, "%s%s%s", PREFIX, sendpacket1, SUFFIX);
 	int packet_length = strlen(sendpacket2);
-//	if (MAX_STRING_LENGTH<packet_length) {
-//		packet_length = MAX_STRING_LENGTH;
-//	}
-	//debug("send_lora_string(waitPacketSent)");
+	if (MAX_STRING_LENGTH<packet_length) {
+		warning("send_lora_string is too long");
+		packet_length = MAX_STRING_LENGTH;
+	}
+	debug("send_lora_string(waitPacketSent)"); // sometimes it hangs after this line
 	lora.waitPacketSent(); // wait for the previous thing to finish sending
-	//debug("send_lora_string(send)");
+	//delay(100);
+	debug("send_lora_string(send)"); // other times it hangs after this line
 	lora.send((uint8_t*) sendpacket2, packet_length); // returns immediately, but message takes another 70 ms to get sent
-	//debug("send_lora_string(return)");
+	debug("send_lora_string(return)");
 	return true;
 }
 
@@ -1162,7 +1207,7 @@ bool parse_lora_raw(const char *raw_message) {
 	}
 	int i = 0;
 	int j = 0;
-	for (i=0, j=0; i<p, j<p; i++, j++) {
+	for (i=0, j=0; i<p && j<p; i++, j++) {
 		if (raw_message[i]!=PREFIX[j]) {
 			Serial.print("message does not match prefix at index ");
 			Serial.print(i);
@@ -1171,7 +1216,7 @@ bool parse_lora_raw(const char *raw_message) {
 			return false;
 		}
 	}
-	for (i=len-1, j=s-1; i<=len-s, j<=0; i--, j--) {
+	for (i=len-1, j=s-1; i<=len-s && j<=0; i--, j--) {
 		if (raw_message[i]!=SUFFIX[j]) {
 			Serial.print("message does not match suffix at index ");
 			Serial.print(i);
@@ -1182,7 +1227,7 @@ bool parse_lora_raw(const char *raw_message) {
 	}
 	const char NODE[] = "node";
 	int string_len = strlen(NODE);
-	for (i=p, j=0; i<p+string_len-1, j<string_len; i++, j++) { // i off-by-frog
+	for (i=p, j=0; i<p+string_len-1 && j<string_len; i++, j++) { // i off-by-frog
 		if (raw_message[i]!=NODE[j]) {
 			Serial.print("message does not match \"node\" at index ");
 			Serial.print(i);
@@ -1257,7 +1302,7 @@ bool parse_lora_message(const char *string) {
 	int len = strnlen(message, MAX_STRING_LENGTH);
 	int i = 0;
 	int j = 0;
-	for (i=0; i<len, j<string_len; i++, j++) {
+	for (i=0; i<len && j<string_len; i++, j++) {
 		if (message[i]!=string[j]) {
 			Serial.print("message does not match ");
 			Serial.print(string);
@@ -1270,7 +1315,7 @@ bool parse_lora_message(const char *string) {
 	}
 	const char RSSI[] = " rssi=-";
 	string_len = strlen(RSSI);
-	for (j=0; i<len, j<string_len; i++, j++) {
+	for (j=0; i<len && j<string_len; i++, j++) {
 		if (message[i]!=RSSI[j]) {
 			Serial.print("message does not match \" rssi=-\" at index ");
 			Serial.print(i);
