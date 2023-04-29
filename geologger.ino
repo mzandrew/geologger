@@ -259,12 +259,11 @@ void setup() {
 	startTime = millis();
 	Serial.begin(115200);
 	delay(4000);
-	Serial.println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------");
+	Serial.println("----------------------------------------------------------");
 	sprintf(paragraph, "geologger");
 	Serial.println(paragraph); //tft.println(paragraph);
 	sprintf(paragraph, "startTime: %ld", startTime);
 	Serial.println(paragraph); //tft.println(paragraph);
-	delay(1000);
 	#if defined(ARDUINO_ADAFRUIT_QTPY_ESP32S2)
 		Wire.setPins(SDA1, SCL1);
 	#endif
@@ -284,7 +283,6 @@ void setup() {
 	#endif
 	tft.setTextSize(2);
 	//tft.println("tft initialized");
-	delay(2000);
 	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		sprintf(paragraph, "GPS not found");
@@ -293,7 +291,6 @@ void setup() {
 	}
 	sprintf(paragraph, "GPS connected");
 	Serial.println(paragraph); tft.println(paragraph);
-	delay(1000);
 	myGNSS.setI2COutput(COM_TYPE_UBX | COM_TYPE_NMEA); //Set the I2C port to output both NMEA and UBX messages
 	myGNSS.setPortInput(COM_PORT_I2C, COM_TYPE_UBX | COM_TYPE_NMEA | COM_TYPE_RTCM3); //Be sure RTCM3 input is enabled. UBX + RTCM3 is not a valid state.
 	myGNSS.setDGNSSConfiguration(SFE_UBLOX_DGNSS_MODE_FIXED); // Set the differential mode - ambiguities are fixed whenever possible
@@ -307,7 +304,6 @@ void setup() {
 	uint32_t currentUART2Baud = myGNSS.getVal32(UBLOX_CFG_UART2_BAUDRATE);
 	sprintf(paragraph, "UART2Baud: %d", currentUART2Baud);
 	Serial.println(paragraph); tft.println(paragraph);
-	delay(1000);
 	if (currentUART2Baud != 57600) {
 		response = myGNSS.setVal32(UBLOX_CFG_UART2_BAUDRATE, 57600);
 		if (response == false) {
@@ -319,10 +315,8 @@ void setup() {
 //	} else {
 //		Serial.println("No baud change needed");
 	}
-	delay(1000);
 	sprintf(paragraph, "enable uart2 RTCM3");
 	Serial.println(paragraph); tft.println(paragraph);
-	delay(1000);
 	response = myGNSS.setVal8(UBLOX_CFG_UART2INPROT_RTCM3X, 1); // Enable RTCM on UART2 Input
 	if (response == false) {
 		sprintf(paragraph, "uart2/RTCM3 fail");
@@ -330,7 +324,6 @@ void setup() {
 		sprintf(paragraph, "uart2/RTCM3 okay");
 	}
 	Serial.println(paragraph); tft.println(paragraph);
-	delay(1000);
 	//myGNSS.saveConfiguration(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_MSGCONF); //Optional: Save the ioPort and message settings to NVM
 	while (Serial.available()) { // Empty the serial buffer
 		Serial.read();
@@ -343,7 +336,6 @@ void setup() {
 			//send_lora_string("robo");
 		}
 	#endif
-	//delay(1000);
 	pinMode(BUTTON1, INPUT_PULLDOWN);
 	pinMode(BUTTON2, INPUT_PULLDOWN);
 	previous_button1 = digitalRead(BUTTON1);
@@ -510,16 +502,12 @@ void loop() {
 #ifdef USE_LORA
 
 bool setup_lora(void) {
-	delay(2000);
 	if (!lora.init()) {
-		delay(1000);
 		sprintf(paragraph, "LoRa init failed");
 		Serial.println(paragraph); tft.println(paragraph);
 	} else {
-		delay(1000);
 		sprintf(paragraph, "LoRa init OK!");
 		Serial.println(paragraph); tft.println(paragraph);
-		delay(1000);
 		if (!lora.setFrequency(LORA_FREQ)) {
 			sprintf(paragraph, "LoRa set freq failed");
 			Serial.println(paragraph); tft.println(paragraph);
@@ -529,13 +517,11 @@ bool setup_lora(void) {
 		}
 		sprintf(paragraph, "LoRa freq: %.1f MHz", LORA_FREQ);
 		Serial.println(paragraph); tft.print(paragraph);
-		delay(1000);
 		lora.setTxPower(LORA_TX_POWER, false);
 		//int tx_power_dbm = lora.getTxPower();
 		int tx_power_dbm = LORA_TX_POWER;
 		sprintf(paragraph, "LoRa TXpower: %d dBm", tx_power_dbm);
 		Serial.println(paragraph); tft.print(paragraph);
-		delay(1000);
 		lora_is_available = true;
 	}
 	return lora_is_available;
