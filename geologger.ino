@@ -1,18 +1,19 @@
 // written 2022-05-07 by mza
-// based on Example17_NTRIPClient_With_GGA_Callback by sparkfun
-// bits taken from adafruit_ILI9341 / graphicstest_featherwing
+// based on Example17_NTRIPClient_With_GGA_Callback by sparkfun, but gutted
 // yet more from adafruit_04_location
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
-// last updated 2023-04-29 by mza
+// also from https://github.com/adafruit/SdFat/blob/master/examples/OpenNext/OpenNext.ino
+// last updated 2023-04-30 by mza
 
 #include <stdint.h>
 #include <SPI.h>
 #include <RH_RF95.h>
-//#include <Adafruit_SPITFT_Macros.h>
-//#include <Adafruit_SPITFT.h>
-//#include <Adafruit_GFX.h>
-//#include <gfxfont.h>
-//#include <Adafruit_GrayOLED.h>
+
+#include <SdFat.h>
+SdFat sd;
+SdFile log_file;
+const char log_file_name[] = "geo.log";
+#define MICROSD_CS (10)
 
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> //http://librarymanager/All#SparkFun_u-blox_GNSS
 SFE_UBLOX_GNSS myGNSS;
@@ -218,15 +219,40 @@ void error(const char *message) {
 	}
 }
 
+bool lf(String location) {
+	SdFile file;
+	SdFile dir;
+	bool return_value = true;
+	if (dir.open(location.c_str())){
+		while (file.openNext(&dir, O_RDONLY)) {
+			if (!file.isDir()) {
+				file.printModifyDateTime(&Serial);
+				Serial.print(" ");
+				file.printFileSize(&Serial);
+				Serial.print(" ");
+				file.printName(&Serial);
+				Serial.println();
+			}
+			file.close();
+		}
+	} else {
+		error("dir.open failed");
+		return_value = false;
+	}
+	return return_value;
+}
+
 void setup() {
 	startTime = millis();
 	Serial.begin(115200);
-//	delay(4000);
-//	Serial.println("----------------------------------------------------------");
-//	sprintf(paragraph, "geologger");
-//	Serial.println(paragraph); //tft.println(paragraph);
-//	sprintf(paragraph, "startTime: %ld", startTime);
-//	Serial.println(paragraph); //tft.println(paragraph);
+	if (1) {
+		delay(4000);
+		Serial.println("----------------------------------------------------------");
+		sprintf(paragraph, "geologger");
+		Serial.println(paragraph); //tft.println(paragraph);
+		sprintf(paragraph, "startTime: %ld", startTime);
+		Serial.println(paragraph); //tft.println(paragraph);
+	}
 	#ifdef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT_OR_REVTFT
 		pinMode(RFM95_RST, OUTPUT);
 		digitalWrite(RFM95_RST, LOW);
@@ -247,6 +273,28 @@ void setup() {
 		tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 	#endif
 	tft.setTextSize(2);
+	pinMode(MICROSD_CS, OUTPUT);
+	if (!sd.begin(MICROSD_CS)) {
+		sprintf(paragraph, "SD card not found");
+		Serial.println(paragraph); tft.println(paragraph);
+		//sd.initErrorHalt(); // sometimes, this tells you that the card is bad and not to bother reformatting
+	} else {
+		sprintf(paragraph, "SD card found");
+		Serial.println(paragraph); tft.println(paragraph);
+		log_file.open(log_file_name, O_WRONLY | O_CREAT);
+		if (log_file) {
+			log_file.seek(log_file.size());
+			sprintf(paragraph, "opened file for writing");
+			Serial.println(paragraph);
+			log_file.println(paragraph);
+			log_file.sync();
+		} else {
+			sprintf(paragraph, "couldn't open file for writing");
+			Serial.println(paragraph);
+		}
+		lf("/");
+		//sd.ls(LS_R);
+	}
 	#ifdef USE_LORA
 		setup_lora();
 		if (lora_is_available) {
@@ -313,6 +361,7 @@ void setup() {
 
 bool should_do_a_lora_pingpong = false;
 bool should_do_an_upload = false;
+bool should_do_a_logfile_write = false;
 void loop() {
 	currentTime = millis();
 	//Serial.print("currentTime: ");
@@ -347,6 +396,7 @@ void loop() {
 	}
 	if (button2_was_just_pressed) {
 		should_do_a_lora_pingpong = true;
+		//should_do_a_logfile_write = true;
 	}
 	if (button1_was_just_pressed) {
 	}
@@ -361,6 +411,7 @@ void loop() {
 				pingPongTime = millis();
 				should_do_a_lora_pingpong = false;
 				if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
+					should_do_a_logfile_write = true;
 					should_do_an_upload = true;
 				}
 			}
@@ -448,6 +499,21 @@ void loop() {
 				#endif
 			}
 		}
+	}
+	if (should_do_a_logfile_write) {
+		//log_file.open(log_file_name, O_WRONLY | O_CREAT); // opens for R/W starting at the end of the file
+		if (log_file) {
+			sprintf(paragraph, "%.7f, %.7f, %.3f, %d", lora_lat, lora_lon, lora_ele, lora_rssi_ping);
+			Serial.println(paragraph);
+			log_file.println(paragraph);
+			log_file.sync();
+			should_do_a_logfile_write = false;
+		} else {
+			sprintf(paragraph, "file is not open for writing");
+			Serial.println(paragraph);
+		}
+		lf("/");
+		//sd.ls(LS_R);
 	}
 	delay(1);
 	count++;
