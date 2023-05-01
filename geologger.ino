@@ -3,6 +3,7 @@
 // yet more from adafruit_04_location
 // more from https://learn.adafruit.com/adafruit-feather-m0-radio-with-lora-radio-module/using-the-rfm-9x-radio
 // also from https://github.com/adafruit/SdFat/blob/master/examples/OpenNext/OpenNext.ino
+// rtc stuff from https://github.com/adafruit/RTClib/blob/master/examples/pcf8523/pcf8523.ino
 // last updated 2023-04-30 by mza
 
 #include <stdint.h>
@@ -12,8 +13,11 @@
 #include <SdFat.h>
 SdFat sd;
 SdFile log_file;
-const char log_file_name[] = "geo.log";
+const char log_file_name[] = "geologger.log";
 #define MICROSD_CS (10)
+
+#include "RTClib.h"
+RTC_PCF8523 rtc;
 
 #include <SparkFun_u-blox_GNSS_Arduino_Library.h> //http://librarymanager/All#SparkFun_u-blox_GNSS
 SFE_UBLOX_GNSS myGNSS;
@@ -106,6 +110,7 @@ unsigned long previous_button2_change_time = 0;
 #define NUMBER_OF_LINES (8)
 char line[NUMBER_OF_LINES][LENGTH_OF_LINE+5];
 char paragraph[NUMBER_OF_LINES*LENGTH_OF_LINE+1];
+char datestamp[30] = "";
 
 uint8_t fixType = 0;
 String fixTypeString[] = { "none", "dead_reck", "2d", "3d", "gnss+dead_reck", "time_only", "unknown" };
@@ -273,6 +278,33 @@ void setup() {
 		tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 	#endif
 	tft.setTextSize(2);
+	Wire.begin(); //Start I2C
+	if (!rtc.begin()) {
+		sprintf(paragraph, "RTC not found");
+		Serial.println(paragraph); tft.println(paragraph);
+	} else {
+		sprintf(paragraph, "RTC found");
+		Serial.println(paragraph); tft.println(paragraph);
+		if (rtc.lostPower()) {
+			sprintf(paragraph, "RTC time not set");
+			Serial.println(paragraph); tft.println(paragraph);
+			rtc.adjust(DateTime(F(__DATE__), F(__TIME__)));
+		}
+		rtc.start();
+		if (0) {
+			float drift = 0; // seconds plus or minus over oservation period - set to 0 to cancel previous calibration.
+			float period_sec = (7 * 86400); // total obsevation period in seconds (86400 = seconds in 1 day: 7 days = (7 * 86400) seconds)
+			float deviation_ppm = (drift / period_sec * 1000000); //  deviation in parts per million (μs)
+			float drift_unit = 4.34; // use with offset mode PCF8523_TwoHours
+			int offset = round(deviation_ppm / drift_unit);
+			rtc.calibrate(PCF8523_TwoHours, offset); // Un-comment to perform calibration once drift (seconds) and observation period (seconds) are correct
+		} else {
+			rtc.calibrate(PCF8523_TwoHours, 0); // Un-comment to cancel previous calibration
+		}
+		DateTime now = rtc.now();
+		sprintf(datestamp, "%04d-%02d-%02d.%02d%02d%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+		Serial.println(datestamp); tft.println(datestamp);
+	}
 	pinMode(MICROSD_CS, OUTPUT);
 	if (!sd.begin(MICROSD_CS)) {
 		sprintf(paragraph, "SD card not found");
@@ -281,7 +313,15 @@ void setup() {
 	} else {
 		sprintf(paragraph, "SD card found");
 		Serial.println(paragraph); tft.println(paragraph);
-		log_file.open(log_file_name, O_WRONLY | O_CREAT);
+		sprintf(paragraph, "opening log_file:");
+		Serial.println(paragraph); tft.println(paragraph);
+		if (strlen(datestamp)) {
+			sprintf(paragraph, "%s.%s", datestamp, log_file_name);
+		} else {
+			sprintf(paragraph, "%s", log_file_name);
+		}
+		Serial.println(paragraph); tft.println(paragraph);
+		log_file.open(paragraph, O_WRONLY | O_CREAT);
 		if (log_file) {
 			log_file.seek(log_file.size());
 			sprintf(paragraph, "opened file for writing");
@@ -293,7 +333,6 @@ void setup() {
 			Serial.println(paragraph);
 		}
 		lf("/");
-		//sd.ls(LS_R);
 	}
 	#ifdef USE_LORA
 		setup_lora();
@@ -303,7 +342,6 @@ void setup() {
 			//send_lora_string("robo");
 		}
 	#endif
-	Wire.begin(); //Start I2C
 	while (myGNSS.begin() == false) { //Connect to the Ublox module using Wire port
 		sprintf(paragraph, "GPS not found");
 		Serial.println(paragraph); tft.println(paragraph);
@@ -501,7 +539,6 @@ void loop() {
 		}
 	}
 	if (should_do_a_logfile_write) {
-		//log_file.open(log_file_name, O_WRONLY | O_CREAT); // opens for R/W starting at the end of the file
 		if (log_file) {
 			sprintf(paragraph, "%.7f, %.7f, %.3f, %d", lora_lat, lora_lon, lora_ele, lora_rssi_ping);
 			Serial.println(paragraph);
@@ -513,7 +550,6 @@ void loop() {
 			Serial.println(paragraph);
 		}
 		lf("/");
-		//sd.ls(LS_R);
 	}
 	delay(1);
 	count++;
