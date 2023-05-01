@@ -15,6 +15,7 @@ SdFat sd;
 SdFile log_file;
 const char log_file_name[] = "geologger.log";
 #define MICROSD_CS (10)
+int total_number_of_datapoints_in_file = 0;
 
 #include "RTClib.h"
 RTC_PCF8523 rtc;
@@ -40,11 +41,12 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define MAX_UPLOADS (99)
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
-#define POST_LORA_RSSI_DATA_OVER_LORA
+#define ACQUIRE_LORA_RSSI_DATA
+//#define POST_LORA_RSSI_DATA_OVER_LORA
 //#define DEBUG_LORA_RSSI
 #define LORA_TX_POWER (20) // [5,20]
 
-#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+#ifdef ACQUIRE_LORA_RSSI_DATA
 	#define USE_LORA
 	int lora_rssi_ping = JUNK_RSSI;
 	int lora_rssi_pong = JUNK_RSSI;
@@ -183,7 +185,7 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	pDOP = ubxDataStruct->pDOP;  // Position DOP * 0.01
 	height_mm = ubxDataStruct->height; // Height above ellipsoid: mm
 	vAcc_mm = ubxDataStruct->vAcc;  // Vertical accuracy estimate: mm
-	sprintf(paragraph, "Lat: %.7f Long: %.7f Height: %.3f numSv: %d Fix: %d %s carrSoln: %d %s diffSoln: %d hAcc_mm: %d vAcc_mm: %d", latitude / 10000000.0, longitude / 10000000.0, altitude / 1000.0, numSV, fixType, fixTypeString[fixType].c_str(), carrSoln, carrSolnString[carrSoln].c_str(), diffSoln, hAcc_mm, vAcc_mm);
+	sprintf(paragraph, "Lat: %.8f Long: %.8f Height: %.3f numSv: %d Fix: %d %s carrSoln: %d %s diffSoln: %d hAcc_mm: %d vAcc_mm: %d", latitude / 10000000.0, longitude / 10000000.0, altitude / 1000.0, numSV, fixType, fixTypeString[fixType].c_str(), carrSoln, carrSolnString[carrSoln].c_str(), diffSoln, hAcc_mm, vAcc_mm);
 	Serial.println(paragraph);
 	lat = latitude / 10000000.0;
 	lon = longitude / 10000000.0;
@@ -314,13 +316,13 @@ void setup() {
 		sprintf(paragraph, "SD card found");
 		Serial.println(paragraph); tft.println(paragraph);
 		sprintf(paragraph, "opening log_file:");
-		Serial.println(paragraph); tft.println(paragraph);
+		Serial.println(paragraph); //tft.println(paragraph);
 		if (strlen(datestamp)) {
 			sprintf(paragraph, "%s.%s", datestamp, log_file_name);
 		} else {
 			sprintf(paragraph, "%s", log_file_name);
 		}
-		Serial.println(paragraph); tft.println(paragraph);
+		Serial.println(paragraph); //tft.println(paragraph);
 		log_file.open(paragraph, O_WRONLY | O_CREAT);
 		if (log_file) {
 			log_file.seek(log_file.size());
@@ -361,7 +363,7 @@ void setup() {
 	bool response;
 	uint32_t currentUART2Baud = myGNSS.getVal32(UBLOX_CFG_UART2_BAUDRATE);
 	sprintf(paragraph, "UART2Baud: %d", currentUART2Baud);
-	Serial.println(paragraph); tft.println(paragraph);
+	Serial.println(paragraph); //tft.println(paragraph);
 	if (currentUART2Baud != 57600) {
 		response = myGNSS.setVal32(UBLOX_CFG_UART2_BAUDRATE, 57600);
 		if (response == false) {
@@ -369,19 +371,19 @@ void setup() {
 		} else {
 			sprintf(paragraph, "set baudrate okay");
 		}
-		Serial.println(paragraph); tft.println(paragraph);
+		Serial.println(paragraph); //tft.println(paragraph);
 //	} else {
 //		Serial.println("No baud change needed");
 	}
 	sprintf(paragraph, "enable uart2 RTCM3");
-	Serial.println(paragraph); tft.println(paragraph);
+	Serial.println(paragraph); //tft.println(paragraph);
 	response = myGNSS.setVal8(UBLOX_CFG_UART2INPROT_RTCM3X, 1); // Enable RTCM on UART2 Input
 	if (response == false) {
 		sprintf(paragraph, "uart2/RTCM3 fail");
 	} else {
 		sprintf(paragraph, "uart2/RTCM3 okay");
 	}
-	Serial.println(paragraph); tft.println(paragraph);
+	Serial.println(paragraph); //tft.println(paragraph);
 	//myGNSS.saveConfiguration(VAL_CFG_SUBSEC_IOPORT | VAL_CFG_SUBSEC_MSGCONF); //Optional: Save the ioPort and message settings to NVM
 	while (Serial.available()) { // Empty the serial buffer
 		Serial.read();
@@ -442,7 +444,7 @@ void loop() {
 	myGNSS.checkUblox(); // Check for the arrival of new GNSS data and process it.
 	myGNSS.checkCallbacks(); // Check if any GNSS callbacks are waiting to be processed.
 	if (LORA_PING_PONG_TIMEOUT_IN_MILLISECONDS<=currentTime-pingPongTime && should_do_a_lora_pingpong) {
-		#ifdef POST_LORA_RSSI_DATA_OVER_LORA
+		#ifdef ACQUIRE_LORA_RSSI_DATA
 			if (lora_is_available) {
 				send_lora_ping();
 				get_lora_pong();
@@ -456,15 +458,15 @@ void loop() {
 		#endif
 	} else if (SCREEN_UPDATE_TIMEOUT_IN_MILLISECONDS<=currentTime-screenUpdateTime) {
 		screenUpdateTime = millis();
-		sprintf(line[0], "hAcc_mm: %u", hAcc_mm); //tft.println(line[0]);
-		sprintf(line[1], "vAcc_mm: %u", vAcc_mm); //tft.println(line[1]);
-		sprintf(line[2], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
+		sprintf(line[0], "h/v_mm: %u/%u", hAcc_mm, vAcc_mm); //tft.println(line[0]);
+		sprintf(line[1], "numSV: %d %c", numSV, diffSoln?'d':' '); //tft.println(line[2]);
 		//sprintf(line[5], "diffSoln: %d", diffSoln); //tft.println(line[5]);
 		//sprintf(line[], "pDOP: %-*d", LENGTH_OF_LINE, pDOP); //tft.println(line[]);
-		sprintf(line[3], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
-		sprintf(line[4], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
+		sprintf(line[2], "fixType: %-*s", LENGTH_OF_LINE, fixTypeString[fixType].c_str()); //tft.println(line[3]);
+		sprintf(line[3], "carrSoln: %-*s", LENGTH_OF_LINE, carrSolnString[carrSoln].c_str()); //tft.println(line[4]);
 		//snprintf(line[], "height_mm: %d", height_mm); //tft.println(line[]);
-		sprintf(line[5], "p/p u/m: %d/%d %d/%d", total_number_of_pongs_received, total_number_of_pings_sent, total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
+		sprintf(line[4], "p/p: %d/%d", total_number_of_pings_sent, total_number_of_pongs_received); //tft.println(line[5]);
+		sprintf(line[5], "f/u/m: %d/%d/%d", total_number_of_datapoints_in_file, total_number_of_uploads, number_of_uploads_for_the_current_minute); //tft.println(line[5]);
 		sprintf(line[6], "last loraRSSI: %d", lora_rssi_ping); //tft.println(line[6]);
 		sprintf(line[7], "uptime: %'ld", (millis()-startTime)/1000);
 		int k = 0;
@@ -540,10 +542,17 @@ void loop() {
 	}
 	if (should_do_a_logfile_write) {
 		if (log_file) {
-			sprintf(paragraph, "%.7f, %.7f, %.3f, %d", lora_lat, lora_lon, lora_ele, lora_rssi_ping);
+			DateTime now = rtc.now();
+			sprintf(datestamp, "%04d-%02d-%02d.%02d%02d%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+			if (strlen(datestamp)) {
+				sprintf(paragraph, "%s, %.8f, %.8f, %.3f, %d", datestamp, lora_lat, lora_lon, lora_ele, lora_rssi_ping);
+			} else {
+				sprintf(paragraph, "%.8f, %.8f, %.3f, %d", lora_lat, lora_lon, lora_ele, lora_rssi_ping);
+			}
 			Serial.println(paragraph);
 			log_file.println(paragraph);
 			log_file.sync();
+			total_number_of_datapoints_in_file++;
 			should_do_a_logfile_write = false;
 		} else {
 			sprintf(paragraph, "file is not open for writing");
