@@ -13,6 +13,7 @@
 #include <SdFat.h>
 SdFat sd;
 SdFile log_file;
+char complete_log_file_name[50];
 const char log_file_name[] = "geologger.log";
 #define MICROSD_CS (10)
 int total_number_of_datapoints_in_file = 0;
@@ -42,7 +43,7 @@ uint8_t verbosity = 4; // debug2=5; debug=4; info=3; warning=2; error=1
 #define MAX_UPLOAD_RATE_PER_MINUTE (10)
 #define MINIMUM_HORIZONTAL_ACCURACY_MM (100)
 #define ACQUIRE_LORA_RSSI_DATA
-//#define POST_LORA_RSSI_DATA_OVER_LORA
+#define POST_LORA_RSSI_DATA_OVER_LORA
 //#define DEBUG_LORA_RSSI
 #define LORA_TX_POWER (20) // [5,20]
 
@@ -157,6 +158,7 @@ uint32_t total_number_of_pongs_received = 0;
 //        |                 |              /
 //        |                 |              |
 
+bool first_time_through = true;
 void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	year = ubxDataStruct->year;
 	month = ubxDataStruct->month;
@@ -164,6 +166,10 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	hour = ubxDataStruct->hour;
 	minute = ubxDataStruct->min;
 	second = ubxDataStruct->sec;
+	if (first_time_through) {
+		rtc.adjust(DateTime(year, month, day, hour, minute, second));
+		first_time_through = false;
+	}
 	if (current_minute!=minute) {
 		number_of_uploads_for_the_current_minute = 0;
 		current_minute = minute;
@@ -185,7 +191,7 @@ void printPVTdata(UBX_NAV_PVT_data_t *ubxDataStruct) {
 	pDOP = ubxDataStruct->pDOP;  // Position DOP * 0.01
 	height_mm = ubxDataStruct->height; // Height above ellipsoid: mm
 	vAcc_mm = ubxDataStruct->vAcc;  // Vertical accuracy estimate: mm
-	sprintf(paragraph, "Lat: %.8f Long: %.8f Height: %.3f numSv: %d Fix: %d %s carrSoln: %d %s diffSoln: %d hAcc_mm: %d vAcc_mm: %d", latitude / 10000000.0, longitude / 10000000.0, altitude / 1000.0, numSV, fixType, fixTypeString[fixType].c_str(), carrSoln, carrSolnString[carrSoln].c_str(), diffSoln, hAcc_mm, vAcc_mm);
+	sprintf(paragraph, "Lat: %.7f Long: %.7f Height: %.3f numSv: %d Fix: %d %s carrSoln: %d %s diffSoln: %d hAcc_mm: %d vAcc_mm: %d", latitude / 10000000.0, longitude / 10000000.0, altitude / 1000.0, numSV, fixType, fixTypeString[fixType].c_str(), carrSoln, carrSolnString[carrSoln].c_str(), diffSoln, hAcc_mm, vAcc_mm);
 	Serial.println(paragraph);
 	lat = latitude / 10000000.0;
 	lon = longitude / 10000000.0;
@@ -230,6 +236,7 @@ bool lf(String location) {
 	SdFile file;
 	SdFile dir;
 	bool return_value = true;
+	Serial.println(location.c_str());
 	if (dir.open(location.c_str())){
 		while (file.openNext(&dir, O_RDONLY)) {
 			if (!file.isDir()) {
@@ -318,12 +325,12 @@ void setup() {
 		sprintf(paragraph, "opening log_file:");
 		Serial.println(paragraph); //tft.println(paragraph);
 		if (strlen(datestamp)) {
-			sprintf(paragraph, "%s.%s", datestamp, log_file_name);
+			sprintf(complete_log_file_name, "%s.%s", datestamp, log_file_name);
 		} else {
-			sprintf(paragraph, "%s", log_file_name);
+			sprintf(complete_log_file_name, "%s", log_file_name);
 		}
-		Serial.println(paragraph); //tft.println(paragraph);
-		log_file.open(paragraph, O_WRONLY | O_CREAT);
+		Serial.println(complete_log_file_name); //tft.println(complete_log_file_name);
+		log_file.open(complete_log_file_name, O_WRONLY | O_CREAT);
 		if (log_file) {
 			log_file.seek(log_file.size());
 			sprintf(paragraph, "opened file for writing");
@@ -450,6 +457,8 @@ void loop() {
 				get_lora_pong();
 				pingPongTime = millis();
 				should_do_a_lora_pingpong = false;
+				//lf(complete_log_file_name);
+				//lf("/");
 				if (lora_hAcc_mm<MINIMUM_HORIZONTAL_ACCURACY_MM) {
 					should_do_a_logfile_write = true;
 					should_do_an_upload = true;
@@ -545,9 +554,9 @@ void loop() {
 			DateTime now = rtc.now();
 			sprintf(datestamp, "%04d-%02d-%02d.%02d%02d%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
 			if (strlen(datestamp)) {
-				sprintf(paragraph, "%s, %.8f, %.8f, %.3f, %d", datestamp, lora_lat, lora_lon, lora_ele, lora_rssi_ping);
+				sprintf(paragraph, "%s, %.7f, %.7f, %.3f, %d", datestamp, lora_lat, lora_lon, lora_ele, lora_rssi_ping);
 			} else {
-				sprintf(paragraph, "%.8f, %.8f, %.3f, %d", lora_lat, lora_lon, lora_ele, lora_rssi_ping);
+				sprintf(paragraph, "%.7f, %.7f, %.3f, %d", lora_lat, lora_lon, lora_ele, lora_rssi_ping);
 			}
 			Serial.println(paragraph);
 			log_file.println(paragraph);
@@ -558,7 +567,8 @@ void loop() {
 			sprintf(paragraph, "file is not open for writing");
 			Serial.println(paragraph);
 		}
-		lf("/");
+		//lf(complete_log_file_name);
+		//lf("/");
 	}
 	delay(1);
 	count++;
@@ -618,12 +628,12 @@ bool send_lora_string(const char *string) {
 }
 
 bool send_lora_float_with_location(float value, float latitude, float longitude, float elevation, const char *string) {
-	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%f,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
+	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%f,%.7f,%.7f,%.3f]", string, value, latitude, longitude, elevation);
 	return send_lora_string(sendpacket3);
 }
 
 bool send_lora_int_with_location(int value, float latitude, float longitude, float elevation, const char *string) {
-	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%d,%.8f,%.8f,%.3f]", string, value, latitude, longitude, elevation);
+	snprintf(sendpacket3, MAX_STRING_LENGTH, "%s [%d,%.7f,%.7f,%.3f]", string, value, latitude, longitude, elevation);
 	return send_lora_string(sendpacket3);
 }
 
